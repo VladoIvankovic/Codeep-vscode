@@ -208,7 +208,7 @@ export class AcpClient extends EventEmitter {
             this.emit('toolCallUpdate', { toolCallId: update.toolCallId, status: update.status });
           }
 
-          if (update.sessionUpdate === 'config_options_update' && update.configOptions) {
+          if ((update.sessionUpdate === 'config_options_update' || update.sessionUpdate === 'config_option_update') && update.configOptions) {
             this.emit('configOptions', update.configOptions, null);
           }
         }

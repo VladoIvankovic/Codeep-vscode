@@ -49,7 +49,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           await this.newSession();
           break;
         case 'ready':
-          this.output.appendLine('[MSG] WebView ready, initializing client...');
           this.initClient();
           // Auto-connect so user sees "Connected" immediately
           this.client!.start().catch((err: Error) => {
@@ -81,7 +80,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('codeep');
     const cliPath = config.get<string>('cliPath') || 'codeep';
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require('os').homedir();
-    this.output.appendLine(`[INIT] cliPath=${cliPath} workspacePath=${workspacePath}`);
 
     this.client = new AcpClient(cliPath, workspacePath);
 
@@ -183,14 +181,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private async handleDeleteSession(sessionId: string): Promise<void> {
     try {
       if (!this.client) this.initClient();
-      this.output.appendLine(`[DELETE] sessionId=${sessionId}`);
       await this.client!.deleteSession(sessionId);
-      this.output.appendLine(`[DELETE] done`);
       // Refresh session list
       const sessions = await this.client!.listSessions();
       this.view?.webview.postMessage({ type: 'sessions', sessions });
     } catch (err: any) {
-      this.output.appendLine(`[DELETE ERROR] ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: err.message });
     }
   }
@@ -213,7 +208,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     try {
       if (!this.client) this.initClient();
       this.skipWelcome = false; // first real message — allow chunks through
-      this.output.appendLine(`[SEND] ${text}`);
       await this.client!.send(text);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] ${err.message}`);

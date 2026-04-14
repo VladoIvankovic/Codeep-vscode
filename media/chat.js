@@ -325,6 +325,7 @@ window.addEventListener('message', (event) => {
       messagesEl.innerHTML = '';
       currentAssistantEl = null;
       currentToolGroupEl = null;
+      toolCallItems.clear();
       sessionsPanelEl.style.display = 'none';
       break;
 
@@ -382,55 +383,177 @@ function respondPermission(card, choice) {
   vscode.postMessage({ type: 'permissionResponse', requestId: Number(card.dataset.requestId), choice });
 }
 
+function makeSection(title) {
+  const sec = document.createElement('div');
+  sec.className = 'settings-section';
+  const h = document.createElement('div');
+  h.className = 'settings-section-title';
+  h.textContent = title;
+  sec.appendChild(h);
+  return sec;
+}
+
+function makeRow(labelText, control) {
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+  const label = document.createElement('label');
+  label.className = 'settings-label';
+  label.textContent = labelText;
+  row.appendChild(label);
+  row.appendChild(control);
+  return row;
+}
+
+function makeSelect(options, currentValue, action, configId) {
+  const select = document.createElement('select');
+  select.className = 'settings-select';
+  select.dataset.action = action;
+  if (configId) select.dataset.configId = configId;
+  options.forEach(({ value, name }) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = name;
+    if (value === currentValue) opt.selected = true;
+    select.appendChild(opt);
+  });
+  return select;
+}
+
 function renderSettingsPanel() {
   settingsPanelEl.innerHTML = '';
 
-  // Mode toggle
-  const modeRow = document.createElement('div');
-  modeRow.className = 'settings-row';
-  const modeLabel = document.createElement('label');
-  modeLabel.className = 'settings-label';
-  modeLabel.textContent = 'Mode';
-  const modeSelect = document.createElement('select');
-  modeSelect.className = 'settings-select';
-  [['auto', 'Auto (no confirmations)'], ['manual', 'Manual (confirm writes)']].forEach(([val, name]) => {
-    const opt = document.createElement('option');
-    opt.value = val;
-    opt.textContent = name;
-    if (val === currentMode) opt.selected = true;
-    modeSelect.appendChild(opt);
-  });
-  modeSelect.dataset.action = 'setMode';
-  modeRow.appendChild(modeLabel);
-  modeRow.appendChild(modeSelect);
-  settingsPanelEl.appendChild(modeRow);
+  // ── Model & Mode ─────────────────────────────────────────────────────────────
+  const modelSection = makeSection('Model & Mode');
 
-  // Config options (model, language, etc.)
-  configOptions.forEach(opt => {
-    const row = document.createElement('div');
-    row.className = 'settings-row';
+  const modeSelect = makeSelect(
+    [['auto', 'Auto — agent acts freely'], ['manual', 'Manual — confirm writes']],
+    currentMode, 'setMode'
+  );
+  modelSection.appendChild(makeRow('Mode', modeSelect));
 
-    const label = document.createElement('label');
-    label.className = 'settings-label';
-    label.textContent = opt.name;
+  const modelOpt = configOptions.find(o => o.id === 'model');
+  if (modelOpt) {
+    const modelSelect = makeSelect(modelOpt.options, modelOpt.currentValue, 'setConfig', 'model');
+    modelSection.appendChild(makeRow('Model', modelSelect));
+  }
 
-    const select = document.createElement('select');
-    select.className = 'settings-select';
-    select.dataset.action = 'setConfig';
-    select.dataset.configId = opt.id;
+  settingsPanelEl.appendChild(modelSection);
 
-    opt.options.forEach(o => {
-      const el = document.createElement('option');
-      el.value = o.value;
-      el.textContent = o.name;
-      if (o.value === opt.currentValue) el.selected = true;
-      select.appendChild(el);
+  // ── Preferences ──────────────────────────────────────────────────────────────
+  const otherOpts = configOptions.filter(o => o.id !== 'model');
+  if (otherOpts.length > 0) {
+    const prefSection = makeSection('Preferences');
+    otherOpts.forEach(opt => {
+      const select = makeSelect(opt.options, opt.currentValue, 'setConfig', opt.id);
+      prefSection.appendChild(makeRow(opt.name, select));
     });
+    settingsPanelEl.appendChild(prefSection);
+  }
 
-    row.appendChild(label);
-    row.appendChild(select);
-    settingsPanelEl.appendChild(row);
+  // ── API Key ───────────────────────────────────────────────────────────────────
+  const apiSection = makeSection('API Key');
+
+  // Derive provider list from model options
+  const seen = new Set();
+  const providers = [];
+  (modelOpt?.options ?? []).forEach(o => {
+    const slash = o.value.indexOf('/');
+    if (slash === -1) return;
+    const pid = o.value.slice(0, slash);
+    const label = o.name.replace(/ [-–] .*/, '').trim(); // strip model part if any
+    if (!seen.has(pid)) { seen.add(pid); providers.push({ id: pid, name: pid }); }
   });
+
+  const currentProvider = (modelOpt?.currentValue ?? '').split('/')[0] || '';
+
+  if (providers.length > 0) {
+    const providerSelect = document.createElement('select');
+    providerSelect.className = 'settings-select';
+    providerSelect.id = 'api-key-provider';
+    providers.forEach(({ id }) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = id;
+      if (id === currentProvider) opt.selected = true;
+      providerSelect.appendChild(opt);
+    });
+    apiSection.appendChild(makeRow('Provider', providerSelect));
+  }
+
+  const keyRow = document.createElement('div');
+  keyRow.className = 'settings-row';
+  const keyLabel = document.createElement('label');
+  keyLabel.className = 'settings-label';
+  keyLabel.textContent = 'API Key';
+  const keyInput = document.createElement('input');
+  keyInput.type = 'password';
+  keyInput.className = 'settings-input';
+  keyInput.placeholder = 'Paste key here…';
+  keyInput.id = 'api-key-input';
+  const keyBtn = document.createElement('button');
+  keyBtn.className = 'settings-btn';
+  keyBtn.textContent = 'Set';
+  keyBtn.dataset.action = 'setApiKey';
+  const keyWrap = document.createElement('div');
+  keyWrap.className = 'settings-key-wrap';
+  keyWrap.appendChild(keyInput);
+  keyWrap.appendChild(keyBtn);
+  keyRow.appendChild(keyLabel);
+  keyRow.appendChild(keyWrap);
+  apiSection.appendChild(keyRow);
+
+  settingsPanelEl.appendChild(apiSection);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+  const helpSection = makeSection('Shortcuts');
+  const shortcuts = [
+    ['Cmd+Shift+C', 'Open chat'],
+    ['Cmd+Shift+X', 'Send selection'],
+    ['Enter', 'Send message'],
+    ['Shift+Enter', 'New line'],
+  ];
+  const shortcutGrid = document.createElement('div');
+  shortcutGrid.className = 'settings-shortcuts';
+  shortcuts.forEach(([key, desc]) => {
+    const k = document.createElement('kbd');
+    k.className = 'settings-kbd';
+    k.textContent = key;
+    const d = document.createElement('span');
+    d.className = 'settings-kbd-desc';
+    d.textContent = desc;
+    shortcutGrid.appendChild(k);
+    shortcutGrid.appendChild(d);
+  });
+  helpSection.appendChild(shortcutGrid);
+  settingsPanelEl.appendChild(helpSection);
+
+  // ── Commands ─────────────────────────────────────────────────────────────────
+  const cmdSection = makeSection('Commands');
+  const commands = [
+    ['/help',    'Show all commands'],
+    ['/review',  'AI code review'],
+    ['/diff',    'Review git diff'],
+    ['/commit',  'Generate commit message'],
+    ['/scan',    'Scan project structure'],
+    ['/fix',     'Fix bugs'],
+    ['/test',    'Write or run tests'],
+    ['/status',  'Show session info'],
+    ['/cost',    'Show token usage'],
+    ['/export',  'Export conversation'],
+  ];
+  const cmdGrid = document.createElement('div');
+  cmdGrid.className = 'settings-commands';
+  commands.forEach(([cmd, desc]) => {
+    const c = document.createElement('button');
+    c.className = 'settings-cmd-chip';
+    c.textContent = cmd;
+    c.title = desc;
+    c.dataset.action = 'insertCommand';
+    c.dataset.command = cmd;
+    cmdGrid.appendChild(c);
+  });
+  cmdSection.appendChild(cmdGrid);
+  settingsPanelEl.appendChild(cmdSection);
 }
 
 function renderSessionsPanel(sessions) {
@@ -521,6 +644,29 @@ settingsPanelEl.addEventListener('change', (e) => {
     vscode.postMessage({ type: 'setMode', modeId: select.value });
   } else if (select.dataset.action === 'setConfig') {
     vscode.postMessage({ type: 'setConfig', configId: select.dataset.configId, value: select.value });
+  }
+});
+
+settingsPanelEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+
+  if (btn.dataset.action === 'setApiKey') {
+    const keyInput = settingsPanelEl.querySelector('#api-key-input');
+    const providerSelect = settingsPanelEl.querySelector('#api-key-provider');
+    const key = keyInput?.value?.trim();
+    const providerId = providerSelect?.value;
+    if (!key || !providerId) return;
+    vscode.postMessage({ type: 'setConfig', configId: 'login', value: `${providerId}:${key}` });
+    keyInput.value = '';
+    btn.textContent = 'Saved!';
+    setTimeout(() => { btn.textContent = 'Set'; }, 2000);
+  }
+
+  if (btn.dataset.action === 'insertCommand') {
+    settingsPanelEl.style.display = 'none';
+    inputEl.value = btn.dataset.command + ' ';
+    inputEl.focus();
   }
 });
 
