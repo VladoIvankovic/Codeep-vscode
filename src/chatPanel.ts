@@ -242,9 +242,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 <body>
   <div id="toolbar">
     <span id="status">Initializing...</span>
-    <button id="btn-settings" title="Settings">⚙</button>
-    <button id="btn-sessions" title="Sessions">⏱</button>
-    <button id="btn-new">New</button>
+    <div id="toolbar-buttons">
+      <button id="btn-settings">Settings</button>
+      <button id="btn-sessions">Sessions</button>
+      <button id="btn-new">New</button>
+    </div>
   </div>
   <div id="settings-panel" style="display:none"></div>
   <div id="sessions-panel" style="display:none"></div>

@@ -18,41 +18,29 @@ body {
 #toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 6px 10px;
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1));
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
 }
 
 #status {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-#btn-settings {
-  background: none;
-  border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
-  color: var(--vscode-foreground);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  cursor: pointer;
+#toolbar-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
-#btn-settings:hover { background: var(--vscode-button-secondaryHoverBackground); }
 
-#btn-sessions {
-  background: none;
-  border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
-  color: var(--vscode-foreground);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  cursor: pointer;
-}
-#btn-sessions:hover { background: var(--vscode-button-secondaryHoverBackground); }
-
-#btn-new {
+#btn-settings, #btn-sessions, #btn-new {
   background: none;
   border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
   color: var(--vscode-foreground);
@@ -61,7 +49,7 @@ body {
   font-size: 11px;
   cursor: pointer;
 }
-#btn-new:hover {
+#btn-settings:hover, #btn-sessions:hover, #btn-new:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
