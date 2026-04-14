@@ -30,6 +30,17 @@ body {
   flex: 1;
 }
 
+#btn-settings {
+  background: none;
+  border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
+  color: var(--vscode-foreground);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+#btn-settings:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
 #btn-sessions {
   background: none;
   border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
@@ -54,6 +65,41 @@ body {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
+#settings-panel {
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1));
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--vscode-sideBar-background);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-select {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: var(--vscode-font-family);
+  flex: 1;
+  min-width: 0;
+}
+
 #sessions-panel {
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1));
   max-height: 220px;
@@ -72,8 +118,30 @@ body {
   padding: 7px 12px;
   cursor: pointer;
   border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .session-item:hover { background: rgba(255,255,255,0.05); }
+
+.session-delete {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.5;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.session-delete:hover { opacity: 1; color: #f87171; }
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+}
 
 .session-name {
   font-size: 12px;

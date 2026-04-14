@@ -61,6 +61,11 @@ export class AcpClient extends EventEmitter {
     if (this.sessionId) {
       await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
     }
+
+    // Emit config options so UI can build settings panel
+    if (session?.configOptions) {
+      this.emit('configOptions', session.configOptions, session.modes);
+    }
   }
 
   async send(message: string): Promise<void> {
@@ -104,6 +109,25 @@ export class AcpClient extends EventEmitter {
     });
     this.sessionId = result?.sessionId ?? codeepSessionId;
     this.emit('sessionLoaded', result?.history ?? []);
+  }
+
+  async setConfigOption(configId: string, value: string): Promise<void> {
+    if (!this.sessionId) return;
+    const result = await this.request('session/set_config_option', { sessionId: this.sessionId, configId, value });
+    if (result?.configOptions) {
+      this.emit('configOptions', result.configOptions, null);
+    }
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    if (!this.sessionId) return;
+    await this.request('session/set_mode', { sessionId: this.sessionId, modeId });
+    this.emit('modeChanged', modeId);
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    if (!this.process) await this.start();
+    await this.request('session/delete', { sessionId });
   }
 
   cancel(): void {
@@ -178,6 +202,10 @@ export class AcpClient extends EventEmitter {
 
           if (update.sessionUpdate === 'tool_use_start' && update.toolCall) {
             this.emit('toolCall', update.toolCall);
+          }
+
+          if (update.sessionUpdate === 'config_options_update' && update.configOptions) {
+            this.emit('configOptions', update.configOptions, null);
           }
         }
       } catch {

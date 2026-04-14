@@ -7,8 +7,13 @@ const btnSend = document.getElementById('btn-send');
 const btnStop = document.getElementById('btn-stop');
 const btnNew = document.getElementById('btn-new');
 const btnSessions = document.getElementById('btn-sessions');
+const btnSettings = document.getElementById('btn-settings');
 const sessionsPanelEl = document.getElementById('sessions-panel');
+const settingsPanelEl = document.getElementById('settings-panel');
 const statusEl = document.getElementById('status');
+
+let configOptions = [];
+let currentMode = 'manual';
 
 let currentAssistantEl = null;
 let currentToolGroupEl = null;
@@ -192,11 +197,22 @@ btnNew.addEventListener('click', () => {
   vscode.postMessage({ type: 'newSession' });
 });
 
+btnSettings.addEventListener('click', () => {
+  if (settingsPanelEl.style.display !== 'none') {
+    settingsPanelEl.style.display = 'none';
+    return;
+  }
+  sessionsPanelEl.style.display = 'none';
+  renderSettingsPanel();
+  settingsPanelEl.style.display = 'block';
+});
+
 btnSessions.addEventListener('click', () => {
   if (sessionsPanelEl.style.display !== 'none') {
     sessionsPanelEl.style.display = 'none';
     return;
   }
+  settingsPanelEl.style.display = 'none';
   sessionsPanelEl.innerHTML = '<div class="sessions-loading">Loading...</div>';
   sessionsPanelEl.style.display = 'block';
   vscode.postMessage({ type: 'listSessions' });
@@ -270,6 +286,16 @@ window.addEventListener('message', (event) => {
       renderSessionsPanel(msg.sessions);
       break;
 
+    case 'configOptions':
+      configOptions = msg.configOptions || [];
+      if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
+      break;
+
+    case 'modeChanged':
+      currentMode = msg.modeId;
+      if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
+      break;
+
     case 'history':
       msg.messages.forEach(m => appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content));
       scrollToBottom();
@@ -336,6 +362,57 @@ function respondPermission(card, choice) {
   vscode.postMessage({ type: 'permissionResponse', requestId: Number(card.dataset.requestId), choice });
 }
 
+function renderSettingsPanel() {
+  settingsPanelEl.innerHTML = '';
+
+  // Mode toggle
+  const modeRow = document.createElement('div');
+  modeRow.className = 'settings-row';
+  const modeLabel = document.createElement('label');
+  modeLabel.className = 'settings-label';
+  modeLabel.textContent = 'Mode';
+  const modeSelect = document.createElement('select');
+  modeSelect.className = 'settings-select';
+  [['auto', 'Auto (no confirmations)'], ['manual', 'Manual (confirm writes)']].forEach(([val, name]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = name;
+    if (val === currentMode) opt.selected = true;
+    modeSelect.appendChild(opt);
+  });
+  modeSelect.dataset.action = 'setMode';
+  modeRow.appendChild(modeLabel);
+  modeRow.appendChild(modeSelect);
+  settingsPanelEl.appendChild(modeRow);
+
+  // Config options (model, language, etc.)
+  configOptions.forEach(opt => {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+
+    const label = document.createElement('label');
+    label.className = 'settings-label';
+    label.textContent = opt.name;
+
+    const select = document.createElement('select');
+    select.className = 'settings-select';
+    select.dataset.action = 'setConfig';
+    select.dataset.configId = opt.id;
+
+    opt.options.forEach(o => {
+      const el = document.createElement('option');
+      el.value = o.value;
+      el.textContent = o.name;
+      if (o.value === opt.currentValue) el.selected = true;
+      select.appendChild(el);
+    });
+
+    row.appendChild(label);
+    row.appendChild(select);
+    settingsPanelEl.appendChild(row);
+  });
+}
+
 function renderSessionsPanel(sessions) {
   sessionsPanelEl.innerHTML = '';
   if (!sessions || sessions.length === 0) {
@@ -362,8 +439,18 @@ function renderSessionsPanel(sessions) {
     metaEl.className = 'session-meta';
     metaEl.textContent = [msgs, date].filter(Boolean).join(' · ');
 
-    item.appendChild(nameEl);
-    item.appendChild(metaEl);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'session-delete';
+    deleteBtn.textContent = '×';
+    deleteBtn.dataset.sessionId = s.sessionId;
+    deleteBtn.dataset.action = 'deleteSession';
+
+    const info = document.createElement('div');
+    info.className = 'session-info';
+    info.appendChild(nameEl);
+    info.appendChild(metaEl);
+    item.appendChild(info);
+    item.appendChild(deleteBtn);
     sessionsPanelEl.appendChild(item);
   });
 }
@@ -393,10 +480,27 @@ messagesEl.addEventListener('click', (e) => {
 });
 
 sessionsPanelEl.addEventListener('click', (e) => {
+  const deleteBtn = e.target.closest('[data-action="deleteSession"]');
+  if (deleteBtn) {
+    e.stopPropagation();
+    vscode.postMessage({ type: 'deleteSession', sessionId: deleteBtn.dataset.sessionId });
+    return;
+  }
   const item = e.target.closest('.session-item');
   if (item && item.dataset.sessionId) {
     sessionsPanelEl.style.display = 'none';
     vscode.postMessage({ type: 'loadSession', sessionId: item.dataset.sessionId });
+  }
+});
+
+settingsPanelEl.addEventListener('change', (e) => {
+  const select = e.target.closest('select');
+  if (!select) return;
+  if (select.dataset.action === 'setMode') {
+    currentMode = select.value;
+    vscode.postMessage({ type: 'setMode', modeId: select.value });
+  } else if (select.dataset.action === 'setConfig') {
+    vscode.postMessage({ type: 'setConfig', configId: select.dataset.configId, value: select.value });
   }
 });
 

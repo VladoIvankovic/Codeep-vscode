@@ -38,6 +38,15 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         case 'loadSession':
           await this.handleLoadSession(msg.sessionId);
           break;
+        case 'deleteSession':
+          await this.handleDeleteSession(msg.sessionId);
+          break;
+        case 'setConfig':
+          await this.client?.setConfigOption(msg.configId, msg.value);
+          break;
+        case 'setMode':
+          await this.client?.setMode(msg.modeId);
+          break;
         case 'newSession':
           await this.newSession();
           break;
@@ -96,6 +105,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     this.client.on('disconnected', (code: number) => {
       this.output.appendLine(`[ACP] Disconnected (exit code: ${code})`);
       this.view?.webview.postMessage({ type: 'status', text: 'Disconnected' });
+    });
+
+    this.client.on('configOptions', (configOptions: any[], modes: any) => {
+      this.view?.webview.postMessage({ type: 'configOptions', configOptions, modes });
+    });
+
+    this.client.on('modeChanged', (modeId: string) => {
+      this.view?.webview.postMessage({ type: 'modeChanged', modeId });
     });
 
     this.client.on('sessionLoaded', (history: { role: string; content: string }[]) => {
@@ -162,6 +179,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     }
   }
 
+  private async handleDeleteSession(sessionId: string): Promise<void> {
+    try {
+      if (!this.client) this.initClient();
+      await this.client!.deleteSession(sessionId);
+      // Refresh session list
+      const sessions = await this.client!.listSessions();
+      this.view?.webview.postMessage({ type: 'sessions', sessions });
+    } catch (err: any) {
+      this.view?.webview.postMessage({ type: 'error', text: err.message });
+    }
+  }
+
   private async handleLoadSession(sessionId: string): Promise<void> {
     try {
       if (!this.client) this.initClient();
@@ -210,9 +239,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 <body>
   <div id="toolbar">
     <span id="status">Initializing...</span>
-    <button id="btn-sessions" title="Load session">⏱</button>
+    <button id="btn-settings" title="Settings">⚙</button>
+    <button id="btn-sessions" title="Sessions">⏱</button>
     <button id="btn-new">New</button>
   </div>
+  <div id="settings-panel" style="display:none"></div>
   <div id="sessions-panel" style="display:none"></div>
   <div id="messages"></div>
   <div id="input-area">
