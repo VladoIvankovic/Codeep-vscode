@@ -1,0 +1,120 @@
+{
+  "name": "codeep",
+  "displayName": "Codeep",
+  "description": "AI coding assistant for VS Code — powered by Codeep CLI",
+  "version": "0.1.0",
+  "publisher": "VladoIvankovic",
+  "icon": "Codeep.png",
+  "galleryBanner": {
+    "color": "#1a1a1a",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VladoIvankovic/Codeep-vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["ai", "coding", "assistant", "agent", "codeep", "llm"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeep",
+          "title": "Codeep",
+          "icon": "media/icon-sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeep": [
+        {
+          "type": "webview",
+          "id": "codeep.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codeep.openChat",
+        "title": "Codeep: Open Chat"
+      },
+      {
+        "command": "codeep.sendSelection",
+        "title": "Codeep: Send Selection to Chat"
+      },
+      {
+        "command": "codeep.reviewFile",
+        "title": "Codeep: Review Current File"
+      },
+      {
+        "command": "codeep.newSession",
+        "title": "Codeep: New Session"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codeep.sendSelection",
+          "when": "editorHasSelection",
+          "group": "codeep"
+        },
+        {
+          "command": "codeep.reviewFile",
+          "group": "codeep"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codeep.openChat",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c"
+      },
+      {
+        "command": "codeep.sendSelection",
+        "key": "ctrl+shift+x",
+        "mac": "cmd+shift+x",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Codeep",
+      "properties": {
+        "codeep.cliPath": {
+          "type": "string",
+          "default": "codeep",
+          "description": "Path to the Codeep CLI executable"
+        },
+        "codeep.provider": {
+          "type": "string",
+          "default": "",
+          "description": "Override AI provider (leave empty to use CLI default)"
+        },
+        "codeep.model": {
+          "type": "string",
+          "default": "",
+          "description": "Override AI model (leave empty to use CLI default)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "npm run build -- --watch",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}
