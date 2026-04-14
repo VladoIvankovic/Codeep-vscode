@@ -127,7 +127,7 @@ export class AcpClient extends EventEmitter {
 
   async deleteSession(sessionId: string): Promise<void> {
     if (!this.process) await this.start();
-    await this.request('session/delete', { sessionId });
+    await this.request('session/delete', { sessionId, cwd: this.workspacePath });
   }
 
   cancel(): void {

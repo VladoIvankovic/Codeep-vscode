@@ -170,6 +170,8 @@ function send() {
   if (!text || isStreaming) return;
   inputEl.value = '';
   inputEl.style.height = 'auto';
+  settingsPanelEl.style.display = 'none';
+  sessionsPanelEl.style.display = 'none';
   vscode.postMessage({ type: 'send', text });
 }
 

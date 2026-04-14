@@ -182,11 +182,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private async handleDeleteSession(sessionId: string): Promise<void> {
     try {
       if (!this.client) this.initClient();
+      this.output.appendLine(`[DELETE] sessionId=${sessionId}`);
       await this.client!.deleteSession(sessionId);
+      this.output.appendLine(`[DELETE] done`);
       // Refresh session list
       const sessions = await this.client!.listSessions();
       this.view?.webview.postMessage({ type: 'sessions', sessions });
     } catch (err: any) {
+      this.output.appendLine(`[DELETE ERROR] ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: err.message });
     }
   }
