@@ -18,6 +18,9 @@ npm install -g codeep
 - **Streaming responses** — see the AI reply as it's being generated
 - **Send selection** — highlight code and send it directly to chat (`Cmd+Shift+X`)
 - **Review file** — right-click any file to run an AI code review
+- **Session browser** — list, load, and delete past conversations
+- **Settings panel** — switch AI model, provider, and permission mode without leaving the editor
+- **Inline permission prompts** — approve or deny file writes and shell commands directly in the chat
 - **New session** — start a fresh conversation at any time
 
 ## Usage
@@ -35,17 +38,17 @@ The extension connects to the Codeep CLI automatically on startup. Once connecte
 | Codeep: Review Current File | — | AI review of the active file |
 | Codeep: New Session | — | Start a new conversation |
 
-### In-chat commands
+### Sessions
 
-You can use any Codeep CLI commands directly in the chat:
+Click **Sessions** in the toolbar to browse past conversations. Click a session to load it (history is restored in the chat). Use the × button to delete a session.
 
-```
-/review          AI-powered git diff review
-/review --staged Review only staged changes
-/cost            Show token usage and cost
-/model           Switch AI model
-/help            List all available commands
-```
+### Settings
+
+Click **Settings** in the toolbar to change the AI model, provider, and permission mode. Changes take effect immediately.
+
+### Permission prompts
+
+When the agent wants to write a file or run a shell command, an inline card appears in the chat asking you to **Allow once**, **Allow always**, or **Deny**. No popups.
 
 ## Configuration
 

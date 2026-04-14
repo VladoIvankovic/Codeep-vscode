@@ -40,7 +40,10 @@ function appendMessage(role, text) {
   return contentEl;
 }
 
-function appendToolCall(text) {
+/** @type {Map<string, HTMLElement>} */
+const toolCallItems = new Map();
+
+function appendToolCall(text, toolCallId) {
   if (!currentToolGroupEl) {
     currentToolGroupEl = document.createElement('div');
     currentToolGroupEl.className = 'tool-group';
@@ -50,8 +53,19 @@ function appendToolCall(text) {
   const item = document.createElement('div');
   item.className = 'tool-item';
   item.textContent = text;
+  if (toolCallId) toolCallItems.set(toolCallId, item);
   currentToolGroupEl.querySelector('.tool-group-items').appendChild(item);
   scrollToBottom();
+}
+
+function updateToolCall(toolCallId, status) {
+  const item = toolCallItems.get(toolCallId);
+  if (item) {
+    item.dataset.status = status;
+    if (status === 'completed') item.style.opacity = '0.5';
+    if (status === 'failed') item.style.color = '#f87171';
+    toolCallItems.delete(toolCallId);
+  }
 }
 
 function appendThinking() {
@@ -261,7 +275,11 @@ window.addEventListener('message', (event) => {
       break;
 
     case 'toolCall':
-      appendToolCall(msg.text);
+      appendToolCall(msg.text, msg.toolCallId);
+      break;
+
+    case 'toolCallUpdate':
+      updateToolCall(msg.toolCallId, msg.status);
       break;
 
     case 'permission':

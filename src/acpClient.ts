@@ -200,8 +200,12 @@ export class AcpClient extends EventEmitter {
             this.emit('thought', update.content.text);
           }
 
-          if (update.sessionUpdate === 'tool_use_start' && update.toolCall) {
-            this.emit('toolCall', update.toolCall);
+          if (update.sessionUpdate === 'tool_call' && update.status === 'in_progress') {
+            this.emit('toolCall', { title: update.title, kind: update.kind, toolCallId: update.toolCallId });
+          }
+
+          if (update.sessionUpdate === 'tool_call_update') {
+            this.emit('toolCallUpdate', { toolCallId: update.toolCallId, status: update.status });
           }
 
           if (update.sessionUpdate === 'config_options_update' && update.configOptions) {

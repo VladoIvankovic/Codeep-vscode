@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { AcpClient } from './acpClient';
 
 export class ChatPanel implements vscode.WebviewViewProvider {
@@ -24,7 +23,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
     // Handle messages from WebView
     webviewView.webview.onDidReceiveMessage(async (msg) => {
-      this.output.appendLine(`[MSG] received: ${msg.type}`);
       switch (msg.type) {
         case 'send':
           await this.handleSend(msg.text);
@@ -98,8 +96,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
 
     this.client.on('toolCall', (params: any) => {
-      const label = params?.tool ? `${params.tool}${params.parameters?.path ? `: ${path.basename(params.parameters.path)}` : ''}` : 'tool call';
-      this.view?.webview.postMessage({ type: 'toolCall', text: label });
+      this.view?.webview.postMessage({ type: 'toolCall', text: params.title ?? 'Working...', toolCallId: params.toolCallId });
+    });
+
+    this.client.on('toolCallUpdate', (params: any) => {
+      this.view?.webview.postMessage({ type: 'toolCallUpdate', toolCallId: params.toolCallId, status: params.status });
     });
 
     this.client.on('disconnected', (code: number) => {
@@ -213,7 +214,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       if (!this.client) this.initClient();
       this.skipWelcome = false; // first real message — allow chunks through
       this.output.appendLine(`[SEND] ${text}`);
-      this.output.show(true);
       await this.client!.send(text);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] ${err.message}`);
