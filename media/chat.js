@@ -268,6 +268,10 @@ window.addEventListener('message', (event) => {
 
     case 'responseEnd':
       isStreaming = false;
+      if (currentToolGroupEl) {
+        const label = currentToolGroupEl.querySelector('.tool-group-label');
+        if (label) { label.textContent = '✓ Done'; label.style.color = '#4ade80'; }
+      }
       currentAssistantEl = null;
       currentToolGroupEl = null;
       btnSend.style.display = 'flex';
@@ -309,6 +313,14 @@ window.addEventListener('message', (event) => {
     case 'configOptions':
       configOptions = msg.configOptions || [];
       if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
+      // Update status bar with current model
+      const modelOpt = configOptions.find(o => o.id === 'model');
+      if (modelOpt?.currentValue) {
+        const modelName = modelOpt.options.find(o => o.value === modelOpt.currentValue)?.name ?? modelOpt.currentValue.split('/').pop();
+        const currentStatus = statusEl.textContent || '';
+        const base = currentStatus.split(' · ')[0];
+        statusEl.textContent = base + ' · ' + modelName;
+      }
       break;
 
     case 'modeChanged':
@@ -603,14 +615,39 @@ function renderSessionsPanel(sessions) {
 function appendOnboarding() {
   const div = document.createElement('div');
   div.className = 'onboarding';
-  div.innerHTML = `
-    <p>Codeep CLI is not installed or not found.</p>
-    <p>Install it with:</p>
-    <div class="code-block">
-      <div class="code-header">terminal<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
-      <pre><code>npm install -g codeep</code></pre>
-    </div>
-    <p>Then reload this window.</p>`;
+
+  const p1 = document.createElement('p');
+  p1.textContent = 'Codeep CLI is not installed or not found.';
+  const p2 = document.createElement('p');
+  p2.textContent = 'Install it with:';
+
+  const block = document.createElement('div');
+  block.className = 'code-block';
+
+  const header = document.createElement('div');
+  header.className = 'code-header';
+  header.textContent = 'terminal';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.textContent = 'Copy';
+  copyBtn.addEventListener('click', () => copyCode(copyBtn));
+  header.appendChild(copyBtn);
+
+  const pre = document.createElement('pre');
+  const code = document.createElement('code');
+  code.textContent = 'npm install -g codeep';
+  pre.appendChild(code);
+  block.appendChild(header);
+  block.appendChild(pre);
+
+  const p3 = document.createElement('p');
+  p3.textContent = 'Then reload this window.';
+
+  div.appendChild(p1);
+  div.appendChild(p2);
+  div.appendChild(block);
+  div.appendChild(p3);
   messagesEl.appendChild(div);
   scrollToBottom();
 }

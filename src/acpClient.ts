@@ -108,6 +108,9 @@ export class AcpClient extends EventEmitter {
       cwd: this.workspacePath,
     });
     this.sessionId = result?.sessionId ?? codeepSessionId;
+    if (result?.configOptions) {
+      this.emit('configOptions', result.configOptions, result.modes ?? null);
+    }
     this.emit('sessionLoaded', result?.history ?? []);
   }
 
