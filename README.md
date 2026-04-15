@@ -2,7 +2,9 @@
 
 AI coding assistant sidebar for VS Code — powered by the [Codeep CLI](https://github.com/VladoIvankovic/Codeep).
 
-![Codeep chat sidebar](media/screenshot.png)
+![Codeep chat sidebar](media/Screenshot-1.png)
+
+![Codeep settings panel](media/Screenshot-2.png)
 
 ## Requirements
 
