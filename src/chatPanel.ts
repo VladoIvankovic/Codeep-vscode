@@ -30,6 +30,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         case 'cancel':
           this.client?.cancel();
           break;
+        case 'cancelAndSend':
+          await this.handleCancelAndSend(msg.text);
+          break;
         case 'listSessions':
           await this.handleListSessions();
           break;
@@ -196,6 +199,20 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       await this.client!.loadSession(sessionId);
     } catch (err: any) {
       this.view?.webview.postMessage({ type: 'error', text: err.message });
+    }
+  }
+
+  private async handleCancelAndSend(text: string): Promise<void> {
+    if (!text.trim()) return;
+    this.view?.webview.postMessage({ type: 'userMessage', text });
+    this.view?.webview.postMessage({ type: 'thinking' });
+    try {
+      if (!this.client) this.initClient();
+      this.skipWelcome = false;
+      await this.client!.cancelAndSend(text);
+    } catch (err: any) {
+      this.output.appendLine(`[ERROR] cancelAndSend: ${err.message}`);
+      this.view?.webview.postMessage({ type: 'error', text: `CLI error: ${err.message}` });
     }
   }
 

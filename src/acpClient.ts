@@ -8,6 +8,7 @@ export class AcpClient extends EventEmitter {
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private sessionId: string | null = null;
   private startFresh = false;
+  private suppressNextResponseEnd = false;
 
   constructor(private cliPath: string, private workspacePath: string) {
     super();
@@ -77,7 +78,19 @@ export class AcpClient extends EventEmitter {
       sessionId: this.sessionId,
       prompt: [{ type: 'text', text: message }],
     });
-    this.emit('responseEnd');
+    if (this.suppressNextResponseEnd) {
+      this.suppressNextResponseEnd = false;
+    } else {
+      this.emit('responseEnd');
+    }
+  }
+
+  async cancelAndSend(message: string): Promise<void> {
+    this.suppressNextResponseEnd = true;
+    this.cancel();
+    // Wait for the cancelled session/prompt to resolve
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await this.send(message);
   }
 
   async newSession(): Promise<void> {

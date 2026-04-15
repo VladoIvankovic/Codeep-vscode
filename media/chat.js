@@ -181,7 +181,16 @@ function copyCode(btn) {
 
 function send() {
   const text = inputEl.value.trim();
-  if (!text || isStreaming) return;
+  if (!text) return;
+  if (isStreaming) {
+    // Interrupt: cancel current agent run, then send reply
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    settingsPanelEl.style.display = 'none';
+    sessionsPanelEl.style.display = 'none';
+    vscode.postMessage({ type: 'cancelAndSend', text });
+    return;
+  }
   inputEl.value = '';
   inputEl.style.height = 'auto';
   settingsPanelEl.style.display = 'none';
