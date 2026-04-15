@@ -2,6 +2,8 @@
 
 AI coding assistant sidebar for VS Code — powered by the [Codeep CLI](https://github.com/VladoIvankovic/Codeep).
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/VladoIvankovic.codeep?label=VS%20Code%20Marketplace&color=0065a9)](https://marketplace.visualstudio.com/items?itemName=VladoIvankovic.codeep)
+
 ![Codeep chat sidebar](media/Screenshot-1.png)
 
 ![Codeep settings panel](media/Screenshot-2.png)
