@@ -409,7 +409,9 @@ function makeSelect(options, currentValue, action, configId) {
   select.className = 'settings-select';
   select.dataset.action = action;
   if (configId) select.dataset.configId = configId;
-  options.forEach(({ value, name }) => {
+  options.forEach((o) => {
+    const value = Array.isArray(o) ? o[0] : o.value;
+    const name  = Array.isArray(o) ? o[1] : o.name;
     const opt = document.createElement('option');
     opt.value = value;
     opt.textContent = name;
