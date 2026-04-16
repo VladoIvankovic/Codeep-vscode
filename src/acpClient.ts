@@ -17,13 +17,25 @@ export class AcpClient extends EventEmitter {
   async start(): Promise<void> {
     if (this.process) return;
 
+    // On Windows, npm global binaries are .cmd wrappers — use shell:true to resolve them
+    const isWindows = process.platform === 'win32';
     this.process = spawn(this.cliPath, ['acp'], {
       cwd: this.workspacePath,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env },
+      shell: isWindows,
     });
 
     const proc = this.process;
+
+    // Fail fast if binary not found (instead of waiting for request timeout)
+    await new Promise<void>((resolve, reject) => {
+      proc.once('error', reject);
+      proc.once('spawn', resolve);
+    }).catch((err) => {
+      this.process = null;
+      throw err;
+    });
 
     proc.stdout?.on('data', (data: Buffer) => {
       this.buffer += data.toString();
