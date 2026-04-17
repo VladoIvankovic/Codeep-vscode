@@ -36,7 +36,7 @@ function appendMessage(role, text) {
   div.appendChild(contentEl);
 
   messagesEl.appendChild(div);
-  scrollToBottom();
+  scrollToBottom(true);
   return contentEl;
 }
 
@@ -71,7 +71,7 @@ function appendToolCall(text, toolCallId) {
   const n = currentToolGroupEl.querySelectorAll('.tool-item').length;
   const countSpan = currentToolGroupEl.querySelector('.tool-group-count');
   if (countSpan) countSpan.textContent = `(${n})`;
-  scrollToBottom();
+  scrollToBottom(true);
 }
 
 function updateToolCall(toolCallId, status) {
@@ -90,7 +90,7 @@ function appendThinking() {
   div.id = 'thinking';
   div.innerHTML = 'Thinking <span class="thinking-dots"><span></span><span></span><span></span></span>';
   messagesEl.appendChild(div);
-  scrollToBottom();
+  scrollToBottom(true);
   return div;
 }
 
@@ -98,8 +98,14 @@ function removeThinking() {
   document.getElementById('thinking')?.remove();
 }
 
-function scrollToBottom() {
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+function isNearBottom() {
+  return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+}
+
+function scrollToBottom(force = false) {
+  if (force || isNearBottom()) {
+    requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+  }
 }
 
 // Markdown renderer — handles code blocks first (extracted as placeholders),
@@ -489,6 +495,53 @@ function makeSelect(options, currentValue, action, configId) {
   return select;
 }
 
+const PROVIDER_GROUP_LABELS = {
+  'z.ai':          'Z.AI — Subscription (GLM Coding Plan)',
+  'z.ai-api':      'Z.AI — API (pay-per-use)',
+  'z.ai-cn':       'Z.AI China — Subscription (GLM Coding Plan)',
+  'z.ai-cn-api':   'Z.AI China — API (pay-per-use)',
+  'minimax':       'MiniMax — Subscription',
+  'minimax-api':   'MiniMax — API (pay-per-use)',
+  'minimax-cn':    'MiniMax China — Subscription',
+  'anthropic':     'Anthropic',
+  'openai':        'OpenAI',
+  'deepseek':      'DeepSeek',
+  'google':        'Google AI',
+  'ollama':        'Ollama (local)',
+};
+
+function makeGroupedModelSelect(options, currentValue, action, configId) {
+  const select = document.createElement('select');
+  select.className = 'settings-select';
+  select.dataset.action = action;
+  if (configId) select.dataset.configId = configId;
+
+  // Group models by provider prefix (part before '/')
+  const groups = new Map();
+  options.forEach(o => {
+    const slash = o.value.indexOf('/');
+    const pid = slash !== -1 ? o.value.slice(0, slash) : '_';
+    if (!groups.has(pid)) groups.set(pid, []);
+    groups.get(pid).push(o);
+  });
+
+  groups.forEach((models, pid) => {
+    const groupLabel = PROVIDER_GROUP_LABELS[pid] ?? pid;
+    const group = document.createElement('optgroup');
+    group.label = groupLabel;
+    models.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.name;
+      if (o.value === currentValue) opt.selected = true;
+      group.appendChild(opt);
+    });
+    select.appendChild(group);
+  });
+
+  return select;
+}
+
 function renderSettingsPanel() {
   if (document.activeElement && settingsPanelEl.contains(document.activeElement)) return;
   settingsPanelEl.innerHTML = '';
@@ -504,7 +557,7 @@ function renderSettingsPanel() {
 
   const modelOpt = configOptions.find(o => o.id === 'model');
   if (modelOpt) {
-    const modelSelect = makeSelect(modelOpt.options, modelOpt.currentValue, 'setConfig', 'model');
+    const modelSelect = makeGroupedModelSelect(modelOpt.options, modelOpt.currentValue, 'setConfig', 'model');
     modelSection.appendChild(makeRow('Model', modelSelect));
   }
 
@@ -524,57 +577,43 @@ function renderSettingsPanel() {
   // ── API Key ───────────────────────────────────────────────────────────────────
   const apiSection = makeSection('API Key');
 
-  const PROVIDER_LABELS = {
-    'z.ai':          'Z.AI — Subscription (GLM Coding Plan)',
-    'z.ai-api':      'Z.AI — API (pay-per-use)',
-    'z.ai-cn':       'Z.AI China — Subscription (GLM Coding Plan)',
-    'z.ai-cn-api':   'Z.AI China — API (pay-per-use)',
-    'minimax':       'MiniMax — Subscription',
-    'minimax-api':   'MiniMax — API (pay-per-use)',
-    'minimax-cn':    'MiniMax China — Subscription',
-    'anthropic':     'Anthropic',
-    'openai':        'OpenAI',
-    'deepseek':      'DeepSeek',
-    'google':        'Google AI',
-    'ollama':        'Ollama (no key needed)',
-  };
-
   const NO_KEY_PROVIDERS = new Set(['ollama']);
 
-  // Derive provider list from model options
-  const seen = new Set();
-  const providers = [];
-  (modelOpt?.options ?? []).forEach(o => {
-    const slash = o.value.indexOf('/');
-    if (slash === -1) return;
-    const pid = o.value.slice(0, slash);
-    if (!seen.has(pid)) {
-      seen.add(pid);
-      providers.push({ id: pid, name: PROVIDER_LABELS[pid] ?? pid });
-    }
-  });
+  // Full hardcoded provider list — always show all, regardless of which models are active
+  const ALL_PROVIDERS = [
+    { id: 'z.ai',        name: 'Z.AI — Subscription (GLM Coding Plan)' },
+    { id: 'z.ai-api',    name: 'Z.AI — API (pay-per-use)' },
+    { id: 'z.ai-cn',     name: 'Z.AI China — Subscription (GLM Coding Plan)' },
+    { id: 'z.ai-cn-api', name: 'Z.AI China — API (pay-per-use)' },
+    { id: 'minimax',     name: 'MiniMax — Subscription' },
+    { id: 'minimax-api', name: 'MiniMax — API (pay-per-use)' },
+    { id: 'minimax-cn',  name: 'MiniMax China — Subscription' },
+    { id: 'anthropic',   name: 'Anthropic' },
+    { id: 'openai',      name: 'OpenAI' },
+    { id: 'deepseek',    name: 'DeepSeek' },
+    { id: 'google',      name: 'Google AI' },
+    { id: 'ollama',      name: 'Ollama (no key needed)' },
+  ];
 
   const currentProvider = (modelOpt?.currentValue ?? '').split('/')[0] || '';
 
-  if (providers.length > 0) {
-    const providerSelect = document.createElement('select');
-    providerSelect.className = 'settings-select';
-    providerSelect.id = 'api-key-provider';
-    providers.forEach(({ id, name }) => {
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = name;
-      if (id === currentProvider) opt.selected = true;
-      providerSelect.appendChild(opt);
-    });
-    apiSection.appendChild(makeRow('Provider', providerSelect));
+  const providerSelect = document.createElement('select');
+  providerSelect.className = 'settings-select';
+  providerSelect.id = 'api-key-provider';
+  ALL_PROVIDERS.forEach(({ id, name }) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = name;
+    if (id === currentProvider) opt.selected = true;
+    providerSelect.appendChild(opt);
+  });
+  apiSection.appendChild(makeRow('Provider', providerSelect));
 
-    // Show/hide API key row based on provider selection
-    providerSelect.addEventListener('change', () => {
-      const keyRow = apiSection.querySelector('.api-key-row');
-      if (keyRow) keyRow.style.display = NO_KEY_PROVIDERS.has(providerSelect.value) ? 'none' : 'flex';
-    });
-  }
+  // Show/hide API key row and update hint on provider change
+  providerSelect.addEventListener('change', () => {
+    const keyRow = apiSection.querySelector('.api-key-row');
+    if (keyRow) keyRow.style.display = NO_KEY_PROVIDERS.has(providerSelect.value) ? 'none' : 'flex';
+  });
 
   const keyRow = document.createElement('div');
   keyRow.className = 'settings-row api-key-row';
