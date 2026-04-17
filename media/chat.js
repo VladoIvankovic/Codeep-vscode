@@ -437,7 +437,8 @@ function appendPermission(requestId, label, detail) {
 
   div.appendChild(actions);
   messagesEl.appendChild(div);
-  scrollToBottom();
+  // Scroll so the whole card is visible from the top, not just the buttons
+  setTimeout(() => div.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
 function respondPermission(card, choice) {
@@ -523,6 +524,23 @@ function renderSettingsPanel() {
   // ── API Key ───────────────────────────────────────────────────────────────────
   const apiSection = makeSection('API Key');
 
+  const PROVIDER_LABELS = {
+    'z.ai':          'Z.AI — Subscription (GLM Coding Plan)',
+    'z.ai-api':      'Z.AI — API (pay-per-use)',
+    'z.ai-cn':       'Z.AI China — Subscription (GLM Coding Plan)',
+    'z.ai-cn-api':   'Z.AI China — API (pay-per-use)',
+    'minimax':       'MiniMax — Subscription',
+    'minimax-api':   'MiniMax — API (pay-per-use)',
+    'minimax-cn':    'MiniMax China — Subscription',
+    'anthropic':     'Anthropic',
+    'openai':        'OpenAI',
+    'deepseek':      'DeepSeek',
+    'google':        'Google AI',
+    'ollama':        'Ollama (no key needed)',
+  };
+
+  const NO_KEY_PROVIDERS = new Set(['ollama']);
+
   // Derive provider list from model options
   const seen = new Set();
   const providers = [];
@@ -530,8 +548,10 @@ function renderSettingsPanel() {
     const slash = o.value.indexOf('/');
     if (slash === -1) return;
     const pid = o.value.slice(0, slash);
-    const label = o.name.replace(/ [-–] .*/, '').trim(); // strip model part if any
-    if (!seen.has(pid)) { seen.add(pid); providers.push({ id: pid, name: pid }); }
+    if (!seen.has(pid)) {
+      seen.add(pid);
+      providers.push({ id: pid, name: PROVIDER_LABELS[pid] ?? pid });
+    }
   });
 
   const currentProvider = (modelOpt?.currentValue ?? '').split('/')[0] || '';
@@ -540,18 +560,25 @@ function renderSettingsPanel() {
     const providerSelect = document.createElement('select');
     providerSelect.className = 'settings-select';
     providerSelect.id = 'api-key-provider';
-    providers.forEach(({ id }) => {
+    providers.forEach(({ id, name }) => {
       const opt = document.createElement('option');
       opt.value = id;
-      opt.textContent = id;
+      opt.textContent = name;
       if (id === currentProvider) opt.selected = true;
       providerSelect.appendChild(opt);
     });
     apiSection.appendChild(makeRow('Provider', providerSelect));
+
+    // Show/hide API key row based on provider selection
+    providerSelect.addEventListener('change', () => {
+      const keyRow = apiSection.querySelector('.api-key-row');
+      if (keyRow) keyRow.style.display = NO_KEY_PROVIDERS.has(providerSelect.value) ? 'none' : 'flex';
+    });
   }
 
   const keyRow = document.createElement('div');
-  keyRow.className = 'settings-row';
+  keyRow.className = 'settings-row api-key-row';
+  if (NO_KEY_PROVIDERS.has(currentProvider)) keyRow.style.display = 'none';
   const keyLabel = document.createElement('label');
   keyLabel.className = 'settings-label';
   keyLabel.textContent = 'API Key';
@@ -571,6 +598,33 @@ function renderSettingsPanel() {
   keyRow.appendChild(keyLabel);
   keyRow.appendChild(keyWrap);
   apiSection.appendChild(keyRow);
+
+  // Provider type hint
+  const hint = document.createElement('div');
+  hint.className = 'settings-hint';
+  hint.id = 'provider-hint';
+  const PROVIDER_HINTS = {
+    'z.ai':        'Uses your Z.AI subscription — no per-token charges.',
+    'z.ai-api':    'Pay-per-use via Z.AI API key (zai.ai → API Keys).',
+    'z.ai-cn':     'Uses your ZhipuAI China subscription.',
+    'z.ai-cn-api': 'Pay-per-use via ZhipuAI China API key.',
+    'minimax':     'Uses your MiniMax subscription — no per-token charges.',
+    'minimax-api': 'Pay-per-use via MiniMax API key (minimaxi.com → API Keys).',
+    'minimax-cn':  'Uses your MiniMax China subscription.',
+    'anthropic':   'Pay-per-use via Anthropic API key (console.anthropic.com).',
+    'openai':      'Pay-per-use via OpenAI API key (platform.openai.com).',
+    'deepseek':    'Pay-per-use via DeepSeek API key (platform.deepseek.com).',
+    'google':      'Pay-per-use via Google AI API key (aistudio.google.com).',
+    'ollama':      'Runs locally — no API key or account needed.',
+  };
+  function updateHint(pid) {
+    hint.textContent = PROVIDER_HINTS[pid] ?? '';
+    hint.style.display = hint.textContent ? 'block' : 'none';
+  }
+  updateHint(currentProvider);
+  const ps = apiSection.querySelector('#api-key-provider');
+  if (ps) ps.addEventListener('change', () => updateHint(ps.value));
+  apiSection.appendChild(hint);
 
   settingsPanelEl.appendChild(apiSection);
 
