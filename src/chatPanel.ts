@@ -6,11 +6,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private client?: AcpClient;
   private output = vscode.window.createOutputChannel('Codeep');
   private skipWelcome = true;
+  private pendingPrefill?: string;
+  private permissionHandlers = new Map<number, vscode.Disposable>();
 
   constructor(private context: vscode.ExtensionContext) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    if (this.pendingPrefill) {
+      const text = this.pendingPrefill;
+      this.pendingPrefill = undefined;
+      setTimeout(() => this.view?.webview.postMessage({ type: 'prefill', text }), 600);
+    }
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -28,6 +35,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           await this.handleSend(msg.text);
           break;
         case 'cancel':
+          this.clearPermissionHandlers();
+          this.view?.webview.postMessage({ type: 'cancelPermissions' });
           this.client?.cancel();
           break;
         case 'cancelAndSend':
@@ -43,10 +52,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           await this.handleDeleteSession(msg.sessionId);
           break;
         case 'setConfig':
-          await this.client?.setConfigOption(msg.configId, msg.value);
+          try {
+            await this.client?.setConfigOption(msg.configId, msg.value);
+          } catch (err: any) {
+            this.view?.webview.postMessage({ type: 'error', text: err.message });
+          }
           break;
         case 'setMode':
-          await this.client?.setMode(msg.modeId);
+          try {
+            await this.client?.setMode(msg.modeId);
+          } catch (err: any) {
+            this.view?.webview.postMessage({ type: 'error', text: err.message });
+          }
           break;
         case 'newSession':
           await this.newSession();
@@ -65,10 +82,15 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   sendToChat(text: string): void {
-    this.view?.webview.postMessage({ type: 'prefill', text });
+    if (this.view) {
+      this.view.webview.postMessage({ type: 'prefill', text });
+    } else {
+      this.pendingPrefill = text;
+    }
   }
 
   async newSession(): Promise<void> {
+    this.clearPermissionHandlers();
     try {
       await this.client?.newSession();
       this.view?.webview.postMessage({ type: 'clearChat' });
@@ -79,7 +101,13 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     }
   }
 
+  private clearPermissionHandlers(): void {
+    this.permissionHandlers.forEach(h => h.dispose());
+    this.permissionHandlers.clear();
+  }
+
   private initClient(): void {
+    if (this.client) return;
     const config = vscode.workspace.getConfiguration('codeep');
     const cliPath = config.get<string>('cliPath') || 'codeep';
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require('os').homedir();
@@ -151,7 +179,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         // Listen for response from WebView
         const handler = this.view?.webview.onDidReceiveMessage((reply: any) => {
           if (reply.type === 'permissionResponse' && reply.requestId === msg.id) {
-            handler?.dispose();
+            this.permissionHandlers.get(msg.id)?.dispose();
+            this.permissionHandlers.delete(msg.id);
             const optionId = reply.choice === 'allow_once'   ? 'allow_once'
                            : reply.choice === 'allow_always' ? 'allow_always'
                            : 'reject_once';
@@ -162,6 +191,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             });
           }
         });
+        if (handler) this.permissionHandlers.set(msg.id, handler);
       }
     });
 
@@ -194,6 +224,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   private async handleLoadSession(sessionId: string): Promise<void> {
+    this.clearPermissionHandlers();
     try {
       if (!this.client) this.initClient();
       await this.client!.loadSession(sessionId);

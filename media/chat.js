@@ -190,6 +190,9 @@ function copyCode(btn) {
   navigator.clipboard.writeText(code).then(() => {
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  }).catch(() => {
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
   });
 }
 
@@ -378,6 +381,10 @@ window.addEventListener('message', (event) => {
       currentAssistantEl = null;
       currentToolGroupEl = null;
       toolCallItems.clear();
+      isStreaming = false;
+      btnSend.style.display = 'flex';
+      btnStop.style.display = 'none';
+      inputEl.placeholder = 'Ask Codeep anything...';
       sessionsPanelEl.style.display = 'none';
       break;
 
@@ -386,6 +393,14 @@ window.addEventListener('message', (event) => {
       inputEl.focus();
       inputEl.style.height = 'auto';
       inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+      break;
+
+    case 'cancelPermissions':
+      messagesEl.querySelectorAll('.permission-card').forEach(card => {
+        if (!card.querySelector('.permission-resolved')) {
+          card.innerHTML = '<div class="permission-resolved">Cancelled</div>';
+        }
+      });
       break;
   }
 });
@@ -474,6 +489,7 @@ function makeSelect(options, currentValue, action, configId) {
 }
 
 function renderSettingsPanel() {
+  if (document.activeElement && settingsPanelEl.contains(document.activeElement)) return;
   settingsPanelEl.innerHTML = '';
 
   // ── Model & Mode ─────────────────────────────────────────────────────────────

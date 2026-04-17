@@ -50,6 +50,7 @@ export class AcpClient extends EventEmitter {
       if (this.process === proc) {
         this.process = null;
         this.sessionId = null;
+        this.rejectAllPending(new Error('CLI process exited'));
         this.emit('disconnected', code);
       }
     });
@@ -100,9 +101,13 @@ export class AcpClient extends EventEmitter {
   async cancelAndSend(message: string): Promise<void> {
     this.suppressNextResponseEnd = true;
     this.cancel();
-    // Wait for the cancelled session/prompt to resolve
     await new Promise(resolve => setTimeout(resolve, 150));
-    await this.send(message);
+    try {
+      await this.send(message);
+    } catch (err) {
+      this.suppressNextResponseEnd = false;
+      throw err;
+    }
   }
 
   async newSession(): Promise<void> {
@@ -127,12 +132,14 @@ export class AcpClient extends EventEmitter {
 
   async loadSession(codeepSessionId: string): Promise<void> {
     if (!this.process) await this.start();
-    // session/load creates a new ACP session that restores the given Codeep session from disk
     const result = await this.request('session/load', {
       sessionId: codeepSessionId,
       cwd: this.workspacePath,
     });
     this.sessionId = result?.sessionId ?? codeepSessionId;
+    if (this.sessionId) {
+      await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
+    }
     if (result?.configOptions) {
       this.emit('configOptions', result.configOptions, result.modes ?? null);
     }
@@ -167,9 +174,17 @@ export class AcpClient extends EventEmitter {
   }
 
   stop(): void {
+    this.rejectAllPending(new Error('CLI stopped'));
     this.process?.kill();
     this.process = null;
     this.sessionId = null;
+  }
+
+  private rejectAllPending(err: Error): void {
+    for (const { reject } of this.pending.values()) {
+      reject(err);
+    }
+    this.pending.clear();
   }
 
   private request(method: string, params: unknown): Promise<any> {
@@ -241,7 +256,7 @@ export class AcpClient extends EventEmitter {
           }
         }
       } catch {
-        // not JSON
+        this.emit('log', `[WARN] Could not parse CLI output: ${line}\n`);
       }
     }
   }
