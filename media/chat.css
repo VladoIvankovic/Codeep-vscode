@@ -329,11 +329,23 @@ body {
   padding: 3px 6px;
   background: rgba(255,255,255,0.03);
   border-radius: 3px;
+  overflow: hidden;
 }
 
 .tool-group-label {
   font-weight: 500;
   color: #f02a30;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tool-group-label:hover { opacity: 0.8; }
+
+.tool-group-count {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 400;
 }
 
 .tool-group-items {
@@ -341,11 +353,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.tool-group.collapsed .tool-group-items {
+  display: none;
 }
 
 .tool-item {
   opacity: 0.7;
   padding-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thinking {
@@ -398,6 +419,9 @@ body {
 }
 #input:focus {
   border-color: var(--vscode-focusBorder);
+}
+#input[placeholder="Working..."] {
+  border-color: rgba(240,42,48,0.4);
 }
 
 #btn-send {

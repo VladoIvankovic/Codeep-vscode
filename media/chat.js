@@ -46,8 +46,21 @@ const toolCallItems = new Map();
 function appendToolCall(text, toolCallId) {
   if (!currentToolGroupEl) {
     currentToolGroupEl = document.createElement('div');
-    currentToolGroupEl.className = 'tool-group';
-    currentToolGroupEl.innerHTML = '<span class="tool-group-label">▸ Working...</span><div class="tool-group-items"></div>';
+    currentToolGroupEl.className = 'tool-group collapsed';
+    const label = document.createElement('span');
+    label.className = 'tool-group-label';
+    const groupEl = currentToolGroupEl;
+    label.addEventListener('click', () => groupEl.classList.toggle('collapsed'));
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'tool-group-status';
+    statusSpan.textContent = 'Working...';
+    const countSpan = document.createElement('span');
+    countSpan.className = 'tool-group-count';
+    label.append(statusSpan, ' ', countSpan);
+    const items = document.createElement('div');
+    items.className = 'tool-group-items';
+    currentToolGroupEl.appendChild(label);
+    currentToolGroupEl.appendChild(items);
     messagesEl.appendChild(currentToolGroupEl);
   }
   const item = document.createElement('div');
@@ -55,6 +68,9 @@ function appendToolCall(text, toolCallId) {
   item.textContent = text;
   if (toolCallId) toolCallItems.set(toolCallId, item);
   currentToolGroupEl.querySelector('.tool-group-items').appendChild(item);
+  const n = currentToolGroupEl.querySelectorAll('.tool-item').length;
+  const countSpan = currentToolGroupEl.querySelector('.tool-group-count');
+  if (countSpan) countSpan.textContent = `(${n})`;
   scrollToBottom();
 }
 
@@ -262,6 +278,7 @@ window.addEventListener('message', (event) => {
       isStreaming = true;
       btnSend.style.display = 'none';
       btnStop.style.display = 'flex';
+      inputEl.placeholder = 'Working...';
       break;
 
     case 'chunk':
@@ -278,16 +295,23 @@ window.addEventListener('message', (event) => {
     case 'responseEnd':
       isStreaming = false;
       if (currentToolGroupEl) {
-        const label = currentToolGroupEl.querySelector('.tool-group-label');
-        if (label) { label.textContent = '✓ Done'; label.style.color = '#4ade80'; }
+        const statusSpan = currentToolGroupEl.querySelector('.tool-group-status');
+        if (statusSpan) { statusSpan.textContent = '✓ Done'; statusSpan.style.color = '#4ade80'; }
       }
       currentAssistantEl = null;
       currentToolGroupEl = null;
       btnSend.style.display = 'flex';
       btnStop.style.display = 'none';
+      inputEl.placeholder = 'Ask Codeep anything...';
       break;
 
     case 'toolCall':
+      if (!isStreaming) {
+        isStreaming = true;
+        btnSend.style.display = 'none';
+        btnStop.style.display = 'flex';
+        inputEl.placeholder = 'Working...';
+      }
       appendToolCall(msg.text, msg.toolCallId);
       break;
 
@@ -296,6 +320,12 @@ window.addEventListener('message', (event) => {
       break;
 
     case 'permission':
+      if (!isStreaming) {
+        isStreaming = true;
+        btnSend.style.display = 'none';
+        btnStop.style.display = 'flex';
+        inputEl.placeholder = 'Working...';
+      }
       appendPermission(msg.requestId, msg.label, msg.detail);
       break;
 
@@ -309,6 +339,7 @@ window.addEventListener('message', (event) => {
       isStreaming = false;
       btnSend.style.display = 'flex';
       btnStop.style.display = 'none';
+      inputEl.placeholder = 'Ask Codeep anything...';
       break;
 
     case 'status':
