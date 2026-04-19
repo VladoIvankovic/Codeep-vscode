@@ -19,6 +19,13 @@ let currentAssistantEl = null;
 let currentToolGroupEl = null;
 let isStreaming = false;
 
+// Scroll sentinel — always the last child of messagesEl.
+// scrollIntoView on it is more reliable than scrollTop = scrollHeight
+// because the browser guarantees it's visible regardless of layout timing.
+const scrollSentinel = document.createElement('div');
+scrollSentinel.style.cssText = 'height:1px;flex-shrink:0;pointer-events:none;';
+messagesEl.appendChild(scrollSentinel);
+
 // ── Render helpers ────────────────────────────────────────────────────────────
 
 function appendMessage(role, text) {
@@ -104,7 +111,9 @@ function isNearBottom() {
 
 function scrollToBottom(force = false) {
   if (force || isNearBottom()) {
-    requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+    // Move sentinel to end (in case new elements were appended after it)
+    messagesEl.appendChild(scrollSentinel);
+    scrollSentinel.scrollIntoView({ block: 'end' });
   }
 }
 
@@ -384,6 +393,7 @@ window.addEventListener('message', (event) => {
 
     case 'clearChat':
       messagesEl.innerHTML = '';
+      messagesEl.appendChild(scrollSentinel);
       currentAssistantEl = null;
       currentToolGroupEl = null;
       toolCallItems.clear();
