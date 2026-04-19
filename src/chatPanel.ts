@@ -302,6 +302,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   <div id="settings-panel" style="display:none"></div>
   <div id="sessions-panel" style="display:none"></div>
   <div id="messages"></div>
+  <div id="agent-status"></div>
   <div id="input-area">
     <textarea id="input" placeholder="Ask Codeep anything..." rows="1"></textarea>
     <button id="btn-send">↑</button>

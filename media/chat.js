@@ -11,6 +11,7 @@ const btnSettings = document.getElementById('btn-settings');
 const sessionsPanelEl = document.getElementById('sessions-panel');
 const settingsPanelEl = document.getElementById('settings-panel');
 const statusEl = document.getElementById('status');
+const agentStatusEl = document.getElementById('agent-status');
 
 let configOptions = [];
 let currentMode = 'manual';
@@ -18,6 +19,7 @@ let currentMode = 'manual';
 let currentAssistantEl = null;
 let currentToolGroupEl = null;
 let isStreaming = false;
+let lastErrorEl = null;
 
 // Scroll sentinel — always the last child of messagesEl.
 // scrollIntoView on it is more reliable than scrollTop = scrollHeight
@@ -43,6 +45,7 @@ function appendMessage(role, text) {
   div.appendChild(contentEl);
 
   messagesEl.appendChild(div);
+  if (role === 'system') lastErrorEl = div;
   scrollToBottom(true);
   return contentEl;
 }
@@ -91,18 +94,36 @@ function updateToolCall(toolCallId, status) {
   }
 }
 
-function appendThinking() {
-  const div = document.createElement('div');
-  div.className = 'thinking';
-  div.id = 'thinking';
-  div.innerHTML = 'Thinking <span class="thinking-dots"><span></span><span></span><span></span></span>';
-  messagesEl.appendChild(div);
-  scrollToBottom(true);
-  return div;
+function setAgentStatus(text, isThinking) {
+  agentStatusEl.innerHTML = '';
+  const icon = document.createElement('span');
+  icon.id = 'agent-status-icon';
+  if (isThinking) {
+    icon.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
+  } else {
+    icon.textContent = '▸';
+  }
+  const label = document.createElement('span');
+  label.id = 'agent-status-text';
+  label.textContent = text;
+  agentStatusEl.appendChild(icon);
+  agentStatusEl.appendChild(label);
+  agentStatusEl.classList.add('visible');
 }
 
-function removeThinking() {
-  document.getElementById('thinking')?.remove();
+function clearAgentStatus() {
+  agentStatusEl.classList.remove('visible');
+  agentStatusEl.innerHTML = '';
+}
+
+function dismissLastError() {
+  if (lastErrorEl) {
+    const el = lastErrorEl;
+    lastErrorEl = null;
+    el.style.transition = 'opacity 0.4s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 400);
+  }
 }
 
 function isNearBottom() {
@@ -284,7 +305,7 @@ window.addEventListener('message', (event) => {
 
   switch (msg.type) {
     case 'userMessage':
-      removeThinking();
+      clearAgentStatus();
       appendMessage('user', msg.text);
       isStreaming = false;
       currentAssistantEl = null;
@@ -292,7 +313,7 @@ window.addEventListener('message', (event) => {
       break;
 
     case 'thinking':
-      appendThinking();
+      setAgentStatus('Thinking...', true);
       isStreaming = true;
       btnSend.style.display = 'none';
       btnStop.style.display = 'flex';
@@ -300,7 +321,8 @@ window.addEventListener('message', (event) => {
       break;
 
     case 'chunk':
-      removeThinking();
+      clearAgentStatus();
+      dismissLastError();
       if (!currentAssistantEl) {
         currentAssistantEl = appendMessage('assistant', '');
       }
@@ -312,6 +334,7 @@ window.addEventListener('message', (event) => {
 
     case 'responseEnd':
       isStreaming = false;
+      clearAgentStatus();
       if (currentToolGroupEl) {
         const statusSpan = currentToolGroupEl.querySelector('.tool-group-status');
         if (statusSpan) { statusSpan.textContent = '✓ Done'; statusSpan.style.color = '#4ade80'; }
@@ -330,6 +353,8 @@ window.addEventListener('message', (event) => {
         btnStop.style.display = 'flex';
         inputEl.placeholder = 'Working...';
       }
+      dismissLastError();
+      setAgentStatus(msg.text, false);
       appendToolCall(msg.text, msg.toolCallId);
       break;
 
@@ -344,6 +369,7 @@ window.addEventListener('message', (event) => {
         btnStop.style.display = 'flex';
         inputEl.placeholder = 'Working...';
       }
+      clearAgentStatus();
       appendPermission(msg.requestId, msg.label, msg.detail);
       break;
 
@@ -352,7 +378,7 @@ window.addEventListener('message', (event) => {
       break;
 
     case 'error':
-      removeThinking();
+      clearAgentStatus();
       appendMessage('system', `Error: ${msg.text}`);
       isStreaming = false;
       btnSend.style.display = 'flex';
@@ -396,7 +422,9 @@ window.addEventListener('message', (event) => {
       messagesEl.appendChild(scrollSentinel);
       currentAssistantEl = null;
       currentToolGroupEl = null;
+      lastErrorEl = null;
       toolCallItems.clear();
+      clearAgentStatus();
       isStreaming = false;
       btnSend.style.display = 'flex';
       btnStop.style.display = 'none';

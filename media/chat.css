@@ -421,6 +421,34 @@ body {
   40% { transform: translateY(-4px); opacity: 1; }
 }
 
+#agent-status {
+  display: none;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: rgba(240,42,48,0.04);
+  border-top: 1px solid rgba(240,42,48,0.15);
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  overflow: hidden;
+}
+#agent-status.visible {
+  display: flex;
+}
+#agent-status-icon {
+  color: #f02a30;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+#agent-status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #input-area {
   border-top: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1));
   padding: 8px 10px;
