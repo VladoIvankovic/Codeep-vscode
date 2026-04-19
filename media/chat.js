@@ -416,6 +416,11 @@ window.addEventListener('message', (event) => {
         if (!card.querySelector('.permission-resolved')) {
           card.innerHTML = '<div class="permission-resolved">Cancelled</div>';
         }
+        setTimeout(() => {
+          card.style.transition = 'opacity 0.4s';
+          card.style.opacity = '0';
+          setTimeout(() => card.remove(), 400);
+        }, 1000);
       });
       break;
   }
@@ -465,6 +470,12 @@ function respondPermission(card, choice) {
   resolved.textContent = label;
   card.appendChild(resolved);
   vscode.postMessage({ type: 'permissionResponse', requestId: Number(card.dataset.requestId), choice });
+  // Auto-remove after 3s with fade
+  setTimeout(() => {
+    card.style.transition = 'opacity 0.4s';
+    card.style.opacity = '0';
+    setTimeout(() => card.remove(), 400);
+  }, 3000);
 }
 
 function makeSection(title) {

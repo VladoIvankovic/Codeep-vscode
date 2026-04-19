@@ -1,6 +1,15 @@
 import * as vscode from 'vscode';
 import { AcpClient } from './acpClient';
 
+function friendlyError(msg: string): string {
+  if (msg.includes('Request timeout'))    return 'The agent took too long to respond and was stopped. You can send a new message to continue.';
+  if (msg.includes('CLI not running'))    return 'Codeep CLI is not running. Try reloading the window.';
+  if (msg.includes('CLI stopped'))        return 'The agent was stopped.';
+  if (msg.includes('process exited'))     return 'Codeep CLI crashed unexpectedly. Try reloading the window.';
+  if (msg.includes('CLI not found'))      return 'Codeep CLI not found. Run: npm install -g codeep';
+  return msg;
+}
+
 export class ChatPanel implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private client?: AcpClient;
@@ -243,7 +252,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       await this.client!.cancelAndSend(text);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] cancelAndSend: ${err.message}`);
-      this.view?.webview.postMessage({ type: 'error', text: `CLI error: ${err.message}` });
+      this.view?.webview.postMessage({ type: 'error', text: friendlyError(err.message) });
     }
   }
 
@@ -259,7 +268,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       await this.client!.send(text);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] ${err.message}`);
-      this.view?.webview.postMessage({ type: 'error', text: `CLI error: ${err.message}` });
+      this.view?.webview.postMessage({ type: 'error', text: friendlyError(err.message) });
     }
   }
 
