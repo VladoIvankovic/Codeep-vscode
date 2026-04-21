@@ -98,6 +98,21 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * Store an API key by delegating to the CLI's `/login` command over ACP.
+   * This is the only place where the extension writes into the user's Codeep
+   * config — it goes through the same code path as `/login` in the TUI, so the
+   * key ends up in `~/.config/codeep/config.json` and is immediately usable.
+   */
+  async setApiKey(providerId: string, apiKey: string): Promise<void> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+    // `/login` doesn't need a running session context, but ACP requires one.
+    // Making sure the client is started up-front avoids a "no session" error
+    // when this command runs before the chat view has been opened.
+    await this.client.send(`/login ${providerId} ${apiKey}`);
+  }
+
   async newSession(): Promise<void> {
     this.clearPermissionHandlers();
     try {

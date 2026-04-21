@@ -55,6 +55,10 @@
       {
         "command": "codeep.newSession",
         "title": "Codeep: New Session"
+      },
+      {
+        "command": "codeep.setApiKey",
+        "title": "Codeep: Set API Key"
       }
     ],
     "menus": {
