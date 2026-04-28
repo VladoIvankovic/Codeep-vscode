@@ -18,6 +18,8 @@ let currentMode = 'manual';
 
 let currentAssistantEl = null;
 let currentToolGroupEl = null;
+let currentThoughtEl = null;
+let currentPlanEl = null;
 let isStreaming = false;
 let lastErrorEl = null;
 
@@ -92,6 +94,64 @@ function updateToolCall(toolCallId, status) {
     if (status === 'failed') item.style.color = '#f87171';
     toolCallItems.delete(toolCallId);
   }
+}
+
+function appendThought(text) {
+  if (!currentThoughtEl) {
+    const card = document.createElement('div');
+    card.className = 'thought-card collapsed';
+    const label = document.createElement('div');
+    label.className = 'thought-label';
+    label.textContent = '✦ Thinking';
+    label.addEventListener('click', () => card.classList.toggle('collapsed'));
+    const body = document.createElement('div');
+    body.className = 'thought-body';
+    card.appendChild(label);
+    card.appendChild(body);
+    messagesEl.appendChild(card);
+    currentThoughtEl = body;
+  }
+  currentThoughtEl.dataset.raw = (currentThoughtEl.dataset.raw || '') + text;
+  currentThoughtEl.textContent = currentThoughtEl.dataset.raw;
+  scrollToBottom();
+}
+
+const PLAN_STATUS_ICON = { pending: '○', in_progress: '◐', completed: '●' };
+
+function renderPlan(entries) {
+  if (!entries || entries.length === 0) {
+    if (currentPlanEl) { currentPlanEl.remove(); currentPlanEl = null; }
+    return;
+  }
+  if (!currentPlanEl) {
+    currentPlanEl = document.createElement('div');
+    currentPlanEl.className = 'plan-card';
+    const label = document.createElement('div');
+    label.className = 'plan-label';
+    label.textContent = 'Plan';
+    currentPlanEl.appendChild(label);
+    const list = document.createElement('div');
+    list.className = 'plan-list';
+    currentPlanEl.appendChild(list);
+    messagesEl.appendChild(currentPlanEl);
+  }
+  const list = currentPlanEl.querySelector('.plan-list');
+  list.innerHTML = '';
+  entries.forEach((e) => {
+    const row = document.createElement('div');
+    row.className = `plan-item plan-${e.status || 'pending'}`;
+    if (e.priority === 'high') row.classList.add('plan-high');
+    const icon = document.createElement('span');
+    icon.className = 'plan-icon';
+    icon.textContent = PLAN_STATUS_ICON[e.status] || '○';
+    const text = document.createElement('span');
+    text.className = 'plan-text';
+    text.textContent = e.content || '';
+    row.appendChild(icon);
+    row.appendChild(text);
+    list.appendChild(row);
+  });
+  scrollToBottom();
 }
 
 function setAgentStatus(text, isThinking) {
@@ -310,6 +370,8 @@ window.addEventListener('message', (event) => {
       isStreaming = false;
       currentAssistantEl = null;
       currentToolGroupEl = null;
+      currentThoughtEl = null;
+      if (currentPlanEl) { currentPlanEl.remove(); currentPlanEl = null; }
       break;
 
     case 'thinking':
@@ -341,9 +403,20 @@ window.addEventListener('message', (event) => {
       }
       currentAssistantEl = null;
       currentToolGroupEl = null;
+      currentThoughtEl = null;
       btnSend.style.display = 'flex';
       btnStop.style.display = 'none';
       inputEl.placeholder = 'Ask Codeep anything...';
+      break;
+
+    case 'thought':
+      dismissLastError();
+      appendThought(msg.text);
+      break;
+
+    case 'plan':
+      dismissLastError();
+      renderPlan(msg.entries);
       break;
 
     case 'toolCall':
@@ -370,7 +443,7 @@ window.addEventListener('message', (event) => {
         inputEl.placeholder = 'Working...';
       }
       clearAgentStatus();
-      appendPermission(msg.requestId, msg.label, msg.detail);
+      appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput);
       break;
 
     case 'onboarding':
@@ -422,6 +495,8 @@ window.addEventListener('message', (event) => {
       messagesEl.appendChild(scrollSentinel);
       currentAssistantEl = null;
       currentToolGroupEl = null;
+      currentThoughtEl = null;
+      currentPlanEl = null;
       lastErrorEl = null;
       toolCallItems.clear();
       clearAgentStatus();
@@ -454,7 +529,66 @@ window.addEventListener('message', (event) => {
   }
 });
 
-function appendPermission(requestId, label, detail) {
+function renderPermissionPreview(toolName, input) {
+  if (!input || typeof input !== 'object') return null;
+
+  // edit_file: side-by-side old/new with line markers
+  if (typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+    const wrap = document.createElement('div');
+    wrap.className = 'permission-diff';
+    const oldLines = input.old_string.split('\n');
+    const newLines = input.new_string.split('\n');
+    oldLines.forEach((l) => {
+      const row = document.createElement('div');
+      row.className = 'diff-line diff-del';
+      row.textContent = '- ' + l;
+      wrap.appendChild(row);
+    });
+    newLines.forEach((l) => {
+      const row = document.createElement('div');
+      row.className = 'diff-line diff-add';
+      row.textContent = '+ ' + l;
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  // write_file: preview of new content (treated as all-additions)
+  if (typeof input.new_content === 'string') {
+    const wrap = document.createElement('div');
+    wrap.className = 'permission-diff';
+    input.new_content.split('\n').forEach((l) => {
+      const row = document.createElement('div');
+      row.className = 'diff-line diff-add';
+      row.textContent = '+ ' + l;
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  // execute_command: show command + cwd in monospace
+  if (toolName === 'execute_command' && typeof input.command === 'string') {
+    const wrap = document.createElement('div');
+    wrap.className = 'permission-cmd';
+    const cmdLine = document.createElement('div');
+    cmdLine.className = 'permission-cmd-line';
+    const fullCmd = input.args ? `${input.command} ${input.args}` : input.command;
+    cmdLine.textContent = '$ ' + fullCmd;
+    wrap.appendChild(cmdLine);
+    if (input.cwd) {
+      const cwd = document.createElement('div');
+      cwd.className = 'permission-cwd';
+      cwd.textContent = 'cwd: ' + input.cwd;
+      wrap.appendChild(cwd);
+    }
+    return wrap;
+  }
+
+  // delete_file: bold warning, no extra preview block needed (path is in detail)
+  return null;
+}
+
+function appendPermission(requestId, label, detail, toolName, toolInput) {
   const div = document.createElement('div');
   div.className = 'permission-card';
   div.dataset.requestId = String(requestId);
@@ -472,6 +606,9 @@ function appendPermission(requestId, label, detail) {
     det.textContent = detail;
     div.appendChild(det);
   }
+
+  const preview = renderPermissionPreview(toolName, toolInput);
+  if (preview) div.appendChild(preview);
 
   const actions = document.createElement('div');
   actions.className = 'permission-actions';

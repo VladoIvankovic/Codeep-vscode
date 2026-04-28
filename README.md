@@ -20,11 +20,13 @@ npm install -g codeep
 
 - **Chat sidebar** — ask questions, get explanations, request changes, all within VS Code
 - **Streaming responses** — see the AI reply as it's being generated
+- **Live agent plan** — when the agent works on a multi-step task, watch its plan update in real time (○ pending, ◐ in progress, ● done)
+- **Reasoning stream** — collapsible "Thinking" card shows the model's reasoning before the answer (when the model exposes it)
 - **Send selection** — highlight code and send it directly to chat (`Cmd+Shift+X`)
 - **Review file** — right-click any file to run an AI code review
 - **Session browser** — list, load, and delete past conversations
 - **Settings panel** — switch AI model, provider, and permission mode without leaving the editor
-- **Inline permission prompts** — approve or deny file writes and shell commands directly in the chat
+- **Inline permission prompts with diff preview** — see exactly what the agent wants to write, edit, or run before approving (no surprises)
 - **New session** — start a fresh conversation at any time
 
 ## Usage
@@ -53,6 +55,14 @@ Click **Settings** in the toolbar to change the AI model, provider, and permissi
 ### Permission prompts
 
 When the agent wants to write a file or run a shell command, an inline card appears in the chat asking you to **Allow once**, **Allow always**, or **Deny**. No popups.
+
+The card now shows a **preview** of what would happen:
+
+- **Edit file** → side-by-side `-` / `+` diff of the change
+- **Write file** → full content preview (first 200 lines for large files)
+- **Run command** → the exact `$ command` and `cwd` that would execute
+
+Truncated payloads are marked so you know you're not seeing the full thing.
 
 ## Configuration
 

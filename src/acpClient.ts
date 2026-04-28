@@ -254,6 +254,14 @@ export class AcpClient extends EventEmitter {
           if ((update.sessionUpdate === 'config_options_update' || update.sessionUpdate === 'config_option_update') && update.configOptions) {
             this.emit('configOptions', update.configOptions, null);
           }
+
+          if (update.sessionUpdate === 'plan' && Array.isArray(update.entries)) {
+            this.emit('plan', update.entries);
+          }
+
+          if (update.sessionUpdate === 'current_mode_update' && update.currentModeId) {
+            this.emit('modeChanged', update.currentModeId);
+          }
         }
       } catch {
         this.emit('log', `[WARN] Could not parse CLI output: ${line}\n`);

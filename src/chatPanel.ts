@@ -147,6 +147,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: 'responseEnd' });
     });
 
+    this.client.on('thought', (text: string) => {
+      if (this.skipWelcome) return;
+      this.view?.webview.postMessage({ type: 'thought', text });
+    });
+
+    this.client.on('plan', (entries: any[]) => {
+      this.view?.webview.postMessage({ type: 'plan', entries });
+    });
 
     this.client.on('toolCall', (params: any) => {
       this.view?.webview.postMessage({ type: 'toolCall', text: params.title ?? 'Working...', toolCallId: params.toolCallId });
@@ -192,12 +200,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         const detail = toolInput.path ?? toolInput.command ?? JSON.stringify(toolInput).slice(0, 100);
         const label = toolName.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-        // Show inline permission card in chat WebView
+        // Show inline permission card in chat WebView. We forward the full
+        // toolInput so the webview can render a diff/preview of what's about
+        // to be written or executed — letting the user verify before allowing.
         this.view?.webview.postMessage({
           type: 'permission',
           requestId: msg.id,
           label,
           detail,
+          toolName,
+          toolInput,
         });
 
         // Listen for response from WebView
