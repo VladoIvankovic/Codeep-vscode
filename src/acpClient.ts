@@ -9,8 +9,19 @@ export class AcpClient extends EventEmitter {
   private sessionId: string | null = null;
   private startFresh = false;
   private suppressNextResponseEnd = false;
+  // Idle-watchdog state: a long-running session/prompt is allowed to take as long
+  // as it likes, as long as the CLI keeps emitting *some* signal (chunk, tool
+  // call, thought). If nothing comes through for `idleTimeoutMs`, we assume the
+  // agent is wedged and cancel the in-flight prompt. This replaces the old
+  // fixed 5-minute cap that was tripping reasoning models on hard tasks.
+  private activePromptId: number | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private cliPath: string, private workspacePath: string) {
+  constructor(
+    private cliPath: string,
+    private workspacePath: string,
+    private idleTimeoutMs: number = 300_000,
+  ) {
     super();
   }
 
@@ -181,6 +192,8 @@ export class AcpClient extends EventEmitter {
   }
 
   private rejectAllPending(err: Error): void {
+    this.clearIdleTimer();
+    this.activePromptId = null;
     for (const { reject } of this.pending.values()) {
       reject(err);
     }
@@ -197,15 +210,45 @@ export class AcpClient extends EventEmitter {
       this.pending.set(id, { resolve, reject });
       const msg = JSON.stringify({ jsonrpc: '2.0', id, method, params });
       this.process.stdin.write(msg + '\n');
-      // Timeout — session/prompt can take a long time for agent tasks
-      const timeout = method === 'session/prompt' ? 300_000 : 30_000;
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error(`Request timeout: ${method}`));
-        }
-      }, timeout);
+
+      if (method === 'session/prompt') {
+        this.activePromptId = id;
+        this.armIdleTimer();
+      } else {
+        // Short fixed timeout for control-plane requests (set_mode, list, etc.)
+        setTimeout(() => {
+          if (this.pending.has(id)) {
+            this.pending.delete(id);
+            reject(new Error(`Request timeout: ${method}`));
+          }
+        }, 30_000);
+      }
     });
+  }
+
+  private armIdleTimer(): void {
+    this.clearIdleTimer();
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      const id = this.activePromptId;
+      if (id === null || !this.pending.has(id)) return;
+      this.activePromptId = null;
+      // Tell CLI to stop the wedged turn, then reject so the UI returns to idle.
+      this.cancel();
+      const pending = this.pending.get(id);
+      this.pending.delete(id);
+      const minutes = Math.round(this.idleTimeoutMs / 60_000);
+      pending?.reject(
+        new Error(`Request timeout: session/prompt (no activity for ${minutes} min)`)
+      );
+    }, this.idleTimeoutMs);
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
   }
 
   private flush(): void {
@@ -216,8 +259,17 @@ export class AcpClient extends EventEmitter {
       try {
         const msg = JSON.parse(line);
 
+        // Any incoming line counts as activity — keeps the idle watchdog quiet
+        // while the agent is genuinely working (streaming chunks, tool calls,
+        // thoughts, etc). If we never see anything, idleTimer eventually fires.
+        if (this.activePromptId !== null) this.armIdleTimer();
+
         // Response to a pending request
         if (msg.id !== undefined && this.pending.has(msg.id)) {
+          if (msg.id === this.activePromptId) {
+            this.activePromptId = null;
+            this.clearIdleTimer();
+          }
           const { resolve, reject } = this.pending.get(msg.id)!;
           this.pending.delete(msg.id);
           if (msg.error) reject(new Error(msg.error.message));

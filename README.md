@@ -71,6 +71,7 @@ Truncated payloads are marked so you know you're not seeing the full thing.
 | `codeep.cliPath` | `codeep` | Path to the Codeep CLI executable |
 | `codeep.provider` | _(CLI default)_ | Override AI provider |
 | `codeep.model` | _(CLI default)_ | Override AI model |
+| `codeep.requestTimeoutMinutes` | `5` | Idle timeout in minutes for an in-flight prompt. Resets on every signal from the CLI (chunks, tool calls, thoughts), so it only fires when the agent is genuinely wedged. Bump to 15+ for slow reasoning models. |
 
 If `codeep` is not on your PATH, set the full path in settings:
 

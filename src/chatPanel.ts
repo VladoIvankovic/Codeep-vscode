@@ -2,7 +2,12 @@ import * as vscode from 'vscode';
 import { AcpClient } from './acpClient';
 
 function friendlyError(msg: string): string {
-  if (msg.includes('Request timeout'))    return 'The agent took too long to respond and was stopped. You can send a new message to continue.';
+  if (msg.includes('Request timeout: session/prompt')) {
+    const m = msg.match(/no activity for (\d+) min/);
+    const mins = m ? m[1] : '5';
+    return `The agent went silent for ${mins} min and was cancelled. If you're using a slow reasoning model, raise codeep.requestTimeoutMinutes in settings.`;
+  }
+  if (msg.includes('Request timeout'))    return 'The CLI did not respond in time and the request was cancelled.';
   if (msg.includes('CLI not running'))    return 'Codeep CLI is not running. Try reloading the window.';
   if (msg.includes('CLI stopped'))        return 'The agent was stopped.';
   if (msg.includes('process exited'))     return 'Codeep CLI crashed unexpectedly. Try reloading the window.';
@@ -135,8 +140,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('codeep');
     const cliPath = config.get<string>('cliPath') || 'codeep';
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require('os').homedir();
+    const timeoutMin = Math.max(1, Math.min(60, config.get<number>('requestTimeoutMinutes') ?? 5));
 
-    this.client = new AcpClient(cliPath, workspacePath);
+    this.client = new AcpClient(cliPath, workspacePath, timeoutMin * 60_000);
 
     this.client.on('chunk', (chunk: string) => {
       if (this.skipWelcome) return;
