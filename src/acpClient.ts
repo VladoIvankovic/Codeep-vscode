@@ -16,6 +16,14 @@ export class AcpClient extends EventEmitter {
   // fixed 5-minute cap that was tripping reasoning models on hard tasks.
   private activePromptId: number | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  // Reconnect bookkeeping. We auto-reconnect when the CLI exits unexpectedly
+  // (crash, OOM kill, parent restart) but stay quiet when the user explicitly
+  // tears the client down (newSession, deactivate). intentionalShutdown is the
+  // gate; reconnectAttempts drives exponential backoff capped at 30s/6 tries.
+  private intentionalShutdown = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MAX_RECONNECT_ATTEMPTS = 6;
 
   constructor(
     private cliPath: string,
@@ -27,6 +35,13 @@ export class AcpClient extends EventEmitter {
 
   async start(): Promise<void> {
     if (this.process) return;
+    // Caller wants the client running — clear any pending reconnect so we don't
+    // race a delayed retry against this fresh start.
+    this.intentionalShutdown = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     // On Windows, npm global binaries are .cmd wrappers — use shell:true to resolve them
     const isWindows = process.platform === 'win32';
@@ -63,6 +78,7 @@ export class AcpClient extends EventEmitter {
         this.sessionId = null;
         this.rejectAllPending(new Error('CLI process exited'));
         this.emit('disconnected', code);
+        if (!this.intentionalShutdown) this.scheduleReconnect();
       }
     });
 
@@ -75,6 +91,9 @@ export class AcpClient extends EventEmitter {
       protocolVersion: 1,
       clientInfo: { name: 'codeep-vscode', version: '0.1.0' },
     });
+    // Successful handshake — clear any reconnect counter so the next failure
+    // gets a fresh backoff curve, not a 30s wait off the bat.
+    this.reconnectAttempts = 0;
     this.emit('connected');
 
     // Create session — params.cwd is what server expects
@@ -107,6 +126,39 @@ export class AcpClient extends EventEmitter {
     } else {
       this.emit('responseEnd');
     }
+  }
+
+  /**
+   * Send a prompt and accumulate the assistant's text into a single string
+   * (instead of streaming via 'chunk' events). Used by inline edit (Cmd+Shift+I)
+   * which needs the full reply to extract the replacement code block.
+   *
+   * Note: 'chunk' events are still emitted to other listeners — chatPanel will
+   * still mirror the exchange into the chat view if that's what's wired up.
+   * This makes inline edits visible in chat history, which we treat as a
+   * feature rather than something to suppress.
+   */
+  async sendAndCollect(message: string): Promise<string> {
+    if (!this.process || !this.sessionId) {
+      await this.start();
+    }
+    let buffer = '';
+    const onChunk = (text: string) => { buffer += text; };
+    this.on('chunk', onChunk);
+    try {
+      await this.request('session/prompt', {
+        sessionId: this.sessionId,
+        prompt: [{ type: 'text', text: message }],
+      });
+    } finally {
+      this.off('chunk', onChunk);
+    }
+    if (this.suppressNextResponseEnd) {
+      this.suppressNextResponseEnd = false;
+    } else {
+      this.emit('responseEnd');
+    }
+    return buffer;
   }
 
   async cancelAndSend(message: string): Promise<void> {
@@ -176,6 +228,12 @@ export class AcpClient extends EventEmitter {
     await this.request('session/delete', { sessionId, cwd: this.workspacePath });
   }
 
+  async listProviders(): Promise<any[]> {
+    if (!this.process) await this.start();
+    const result = await this.request('session/list_providers', {});
+    return result?.providers ?? [];
+  }
+
   cancel(): void {
     if (this.sessionId && this.process?.stdin) {
       // session/cancel is a notification (no id, no response expected)
@@ -185,10 +243,37 @@ export class AcpClient extends EventEmitter {
   }
 
   stop(): void {
+    this.intentionalShutdown = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
     this.rejectAllPending(new Error('CLI stopped'));
     this.process?.kill();
     this.process = null;
     this.sessionId = null;
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= AcpClient.MAX_RECONNECT_ATTEMPTS) {
+      this.emit('reconnectFailed', this.reconnectAttempts);
+      return;
+    }
+    // 1s, 2s, 4s, 8s, 16s, 30s — capped so we don't churn but don't give up
+    // immediately on transient crashes either.
+    const delay = Math.min(30_000, 1000 * Math.pow(2, this.reconnectAttempts));
+    this.reconnectAttempts++;
+    this.emit('reconnecting', { attempt: this.reconnectAttempts, max: AcpClient.MAX_RECONNECT_ATTEMPTS, delayMs: delay });
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.start()
+        .then(() => this.emit('reconnected'))
+        .catch((err: Error) => {
+          this.emit('log', `[reconnect] attempt ${this.reconnectAttempts} failed: ${err.message}\n`);
+          this.scheduleReconnect();
+        });
+    }, delay);
   }
 
   private rejectAllPending(err: Error): void {

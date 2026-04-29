@@ -185,6 +185,20 @@ body {
   line-height: 1.4;
 }
 
+.settings-upgrade {
+  font-size: 11px;
+  opacity: 1;
+  background: rgba(255, 180, 0, 0.07);
+  border: 1px solid rgba(255, 180, 0, 0.25);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.settings-upgrade code {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
 .settings-select optgroup {
   font-weight: 600;
   font-size: 10px;
@@ -329,6 +343,65 @@ body {
 }
 
 .message-content em { font-style: italic; }
+
+.message-content a {
+  color: var(--vscode-textLink-foreground, #4fc1ff);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.message-content a:hover {
+  color: var(--vscode-textLink-activeForeground, #6cb6ff);
+  border-bottom-style: solid;
+}
+
+.message-content blockquote {
+  border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(255,255,255,0.2));
+  background: var(--vscode-textBlockQuote-background, rgba(255,255,255,0.04));
+  padding: 4px 10px;
+  margin: 4px 0;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.message-content table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 0.95em;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.message-content th,
+.message-content td {
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+.message-content td {
+  /* Wrap long content at word boundaries instead of overflowing the cell */
+  word-break: break-word;
+}
+
+.message-content td code {
+  /* URLs and other long unbroken tokens — break wherever needed so they
+     don't force the cell wider than the viewport */
+  word-break: break-all;
+}
+
+.message-content th {
+  background: rgba(255,255,255,0.05);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  /* Don't fold short header labels into 2 lines — keep them readable
+     and let the table scroll horizontally if needed */
+  white-space: nowrap;
+}
+
+.message-content tr:nth-child(even) td {
+  background: rgba(255,255,255,0.02);
+}
 
 .message.user .message-role { color: #60a5fa; }
 .message.user .message-content {
@@ -548,6 +621,56 @@ body {
   display: flex;
   gap: 6px;
   align-items: flex-end;
+  position: relative;
+}
+
+#mention-popup {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 10px;
+  right: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255,255,255,0.15));
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  z-index: 10;
+}
+
+.mention-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mention-item:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
+.mention-item.selected { background: var(--vscode-list-activeSelectionBackground, rgba(96,165,250,0.2)); }
+
+.mention-name {
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  flex-shrink: 0;
+}
+
+.mention-path {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.mention-empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
 }
 
 #input {

@@ -2,6 +2,7 @@ src/**
 node_modules/**
 .gitignore
 tsconfig.json
+tsconfig.webview.json
 **/*.map
 **/*.ts
 !dist/**

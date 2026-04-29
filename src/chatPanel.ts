@@ -1,6 +1,25 @@
 import * as vscode from 'vscode';
 import { AcpClient } from './acpClient';
 
+export interface ProviderEntry {
+  id: string;
+  name: string;
+  description: string;
+  groupLabel: string;
+  hint: string;
+  requiresKey: boolean;
+  subscribeUrl?: string;
+}
+
+// Connection-level status surfaced to the status bar item. Webview gets a
+// formatted text via the existing 'status' message; the status bar reads this
+// structured shape and decides its own icon/colour/text.
+export interface ChatStatusState {
+  connection: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'failed';
+  model?: string;
+  reconnect?: { attempt: number; max: number; delaySec: number };
+}
+
 function friendlyError(msg: string): string {
   if (msg.includes('Request timeout: session/prompt')) {
     const m = msg.match(/no activity for (\d+) min/);
@@ -21,7 +40,27 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private output = vscode.window.createOutputChannel('Codeep');
   private skipWelcome = true;
   private pendingPrefill?: string;
-  private permissionHandlers = new Map<number, vscode.Disposable>();
+  // requestId → callback that resolves a pending session/request_permission.
+  // Single-listener design: the main onDidReceiveMessage switch dispatches
+  // permissionResponse messages here. Previously each permission request
+  // installed its own listener — fine for one-off prompts but every webview
+  // message ran through every active handler, scaling O(n) per message.
+  private pendingPermissions = new Map<number, (reply: any) => void>();
+  // Cached provider list from CLI's session/list_providers. Static for the
+  // lifetime of a CLI process; cleared on disconnect so a reconnect re-fetches.
+  // providersUnavailable=true when the CLI is older than v0.1.34 (the version
+  // that introduced session/list_providers) — in that case we keep the rest of
+  // the UI working and surface a "please update" hint where the provider list
+  // would otherwise appear.
+  private providerCache: ProviderEntry[] | null = null;
+  private providerFetchPromise: Promise<ProviderEntry[]> | null = null;
+  private providersUnavailable = false;
+
+  // Status bar feed. We track structured connection state here and fire
+  // onStatusChange whenever it shifts; extension.ts listens and renders.
+  private currentStatus: ChatStatusState = { connection: 'connecting' };
+  private statusEmitter = new vscode.EventEmitter<ChatStatusState>();
+  public readonly onStatusChange = this.statusEmitter.event;
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -82,6 +121,17 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         case 'newSession':
           await this.newSession();
           break;
+        case 'fileSearch':
+          await this.handleFileSearch(msg.query, msg.queryId);
+          break;
+        case 'permissionResponse': {
+          const cb = this.pendingPermissions.get(msg.requestId);
+          if (cb) {
+            this.pendingPermissions.delete(msg.requestId);
+            cb(msg);
+          }
+          break;
+        }
         case 'ready':
           this.initClient();
           // Auto-connect so user sees "Connected" immediately
@@ -109,6 +159,60 @@ export class ChatPanel implements vscode.WebviewViewProvider {
    * config — it goes through the same code path as `/login` in the TUI, so the
    * key ends up in `~/.config/codeep/config.json` and is immediately usable.
    */
+  /**
+   * Fetch the canonical provider list from the CLI, cached for the life of the
+   * connection. Used by both the chat WebView (settings panel) and the
+   * `Codeep: Set API Key` quick-pick — eliminates the previous three copies
+   * of this list scattered around the extension.
+   */
+  async getProviders(): Promise<ProviderEntry[]> {
+    if (this.providerCache) return this.providerCache;
+    if (this.providerFetchPromise) return this.providerFetchPromise;
+    this.initClient();
+    this.providerFetchPromise = (async () => {
+      try {
+        const providers = await this.client!.listProviders();
+        this.providerCache = providers as ProviderEntry[];
+        this.providersUnavailable = false;
+        return this.providerCache;
+      } catch (err: any) {
+        // Older CLIs don't implement session/list_providers. Don't treat that
+        // as a hard error — the rest of the extension stays usable and the
+        // settings panel surfaces a "please update" hint instead.
+        if (typeof err?.message === 'string' && err.message.includes('Method not found')) {
+          this.providersUnavailable = true;
+          this.providerCache = [];
+          return [];
+        }
+        throw err;
+      } finally {
+        this.providerFetchPromise = null;
+      }
+    })();
+    return this.providerFetchPromise;
+  }
+
+  isProviderListAvailable(): boolean {
+    return !this.providersUnavailable;
+  }
+
+  getStatusState(): ChatStatusState {
+    return this.currentStatus;
+  }
+
+  /**
+   * Patch the status state and notify listeners. We clear `reconnect` info
+   * on every successful connection so the status bar doesn't keep showing
+   * a stale "Reconnect 3/6" label after recovery.
+   */
+  private updateStatus(patch: Partial<ChatStatusState>): void {
+    this.currentStatus = { ...this.currentStatus, ...patch };
+    if (patch.connection === 'connected') {
+      this.currentStatus.reconnect = undefined;
+    }
+    this.statusEmitter.fire(this.currentStatus);
+  }
+
   async setApiKey(providerId: string, apiKey: string): Promise<void> {
     this.initClient();
     if (!this.client) throw new Error('CLI not running');
@@ -116,6 +220,52 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     // Making sure the client is started up-front avoids a "no session" error
     // when this command runs before the chat view has been opened.
     await this.client.send(`/login ${providerId} ${apiKey}`);
+  }
+
+  /**
+   * Inline edit (Cmd+Shift+I) — ask the agent to rewrite a chunk of code
+   * according to natural-language instructions. Returns the new code (just
+   * the inside of the first ``` block) or null if the agent refused or
+   * returned something unparseable.
+   *
+   * The exchange flows through the normal session, so it's also visible in
+   * the chat view. The user sees both: the inline edit applied to the file,
+   * and the conversation in the sidebar if they have it open.
+   */
+  async requestInlineEdit(code: string, lang: string, instructions: string, fileName: string): Promise<string | null> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+
+    // Strict prompt: we want only the code, no markdown, no commentary.
+    // The agent doesn't always comply, so we still try to extract a code
+    // block from whatever comes back.
+    const prompt = [
+      'You are performing a focused edit on a single block of code.',
+      'Return ONLY the updated code, wrapped in a single ``` code block.',
+      'No explanation, no preamble, no trailing notes.',
+      '',
+      `File: ${fileName}`,
+      `Language: ${lang || 'plaintext'}`,
+      '',
+      'Original:',
+      '```' + (lang || ''),
+      code,
+      '```',
+      '',
+      `Instruction: ${instructions}`,
+    ].join('\n');
+
+    this.skipWelcome = false;
+    this.view?.webview.postMessage({ type: 'userMessage', text: `[inline edit] ${instructions}` });
+    this.view?.webview.postMessage({ type: 'thinking' });
+
+    const response = await this.client.sendAndCollect(prompt);
+
+    // Extract first fenced code block. Tolerate optional language tag and
+    // surrounding whitespace; agent might wrap or include a brief label.
+    const match = response.match(/```[a-zA-Z0-9_+\-]*\n?([\s\S]*?)```/);
+    if (!match) return null;
+    return match[1].replace(/\n$/, '');
   }
 
   async newSession(): Promise<void> {
@@ -131,8 +281,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   private clearPermissionHandlers(): void {
-    this.permissionHandlers.forEach(h => h.dispose());
-    this.permissionHandlers.clear();
+    this.pendingPermissions.clear();
   }
 
   private initClient(): void {
@@ -172,10 +321,53 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
     this.client.on('disconnected', (code: number) => {
       this.output.appendLine(`[ACP] Disconnected (exit code: ${code})`);
+      // Provider list belongs to the CLI process — drop it so a reconnect
+      // refetches against the new server (it might be a different version).
+      this.providerCache = null;
+      this.providersUnavailable = false;
+      this.updateStatus({ connection: 'disconnected' });
       this.view?.webview.postMessage({ type: 'status', text: 'Disconnected' });
     });
 
+    this.client.on('reconnecting', (info: { attempt: number; max: number; delayMs: number }) => {
+      const secs = Math.round(info.delayMs / 1000);
+      this.output.appendLine(`[ACP] Reconnecting in ${secs}s (attempt ${info.attempt}/${info.max})`);
+      this.updateStatus({
+        connection: 'reconnecting',
+        reconnect: { attempt: info.attempt, max: info.max, delaySec: secs },
+      });
+      this.view?.webview.postMessage({
+        type: 'status',
+        text: `Reconnecting in ${secs}s (${info.attempt}/${info.max})…`,
+      });
+    });
+
+    this.client.on('reconnected', () => {
+      this.output.appendLine('[ACP] Reconnected');
+      this.updateStatus({ connection: 'connected' });
+      this.view?.webview.postMessage({ type: 'status', text: 'Reconnected' });
+    });
+
+    this.client.on('reconnectFailed', (attempts: number) => {
+      this.output.appendLine(`[ACP] Reconnect failed after ${attempts} attempts`);
+      this.updateStatus({ connection: 'failed' });
+      this.view?.webview.postMessage({ type: 'status', text: 'Disconnected — reload window' });
+      this.view?.webview.postMessage({
+        type: 'error',
+        text: `Could not reach Codeep CLI after ${attempts} attempts. Reload the window or check the CLI installation.`,
+      });
+    });
+
     this.client.on('configOptions', (configOptions: any[], modes: any) => {
+      // Mirror current model name into status state so the status bar can
+      // show "Codeep · gpt-5.5" without round-tripping through the webview.
+      const modelOpt = configOptions.find((o) => o?.id === 'model');
+      if (modelOpt?.currentValue) {
+        const friendly =
+          modelOpt.options?.find((o: any) => o.value === modelOpt.currentValue)?.name
+          ?? String(modelOpt.currentValue).split('/').pop();
+        this.updateStatus({ model: friendly });
+      }
       this.view?.webview.postMessage({ type: 'configOptions', configOptions, modes });
     });
 
@@ -191,8 +383,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
     this.client.on('connected', () => {
       this.output.appendLine('[ACP] Connected');
+      this.updateStatus({ connection: 'connected' });
       this.view?.webview.postMessage({ type: 'status', text: 'Connected' });
       this.skipWelcome = true; // filter welcome message on each connect
+      // Fetch provider list once we're connected and forward it to the
+      // WebView so the settings panel can populate without hardcoding.
+      this.getProviders()
+        .then((providers) => this.view?.webview.postMessage({
+          type: 'providers',
+          providers,
+          unavailable: this.providersUnavailable,
+        }))
+        .catch((err) => this.output.appendLine(`[providers] fetch failed: ${err.message}`));
     });
 
     this.client.on('log', (msg: string) => {
@@ -218,22 +420,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           toolInput,
         });
 
-        // Listen for response from WebView
-        const handler = this.view?.webview.onDidReceiveMessage((reply: any) => {
-          if (reply.type === 'permissionResponse' && reply.requestId === msg.id) {
-            this.permissionHandlers.get(msg.id)?.dispose();
-            this.permissionHandlers.delete(msg.id);
-            const optionId = reply.choice === 'allow_once'   ? 'allow_once'
-                           : reply.choice === 'allow_always' ? 'allow_always'
-                           : 'reject_once';
-            this.client!.respond(msg.id, {
-              outcome: reply.choice
-                ? { type: 'selected', optionId }
-                : { type: 'cancelled' },
-            });
-          }
+        // Register a one-shot resolver. The main webview message switch picks
+        // it up via pendingPermissions and forwards the reply to the CLI.
+        this.pendingPermissions.set(msg.id, (reply: any) => {
+          const optionId = reply.choice === 'allow_once'   ? 'allow_once'
+                         : reply.choice === 'allow_always' ? 'allow_always'
+                         : 'reject_once';
+          this.client!.respond(msg.id, {
+            outcome: reply.choice
+              ? { type: 'selected', optionId }
+              : { type: 'cancelled' },
+          });
         });
-        if (handler) this.permissionHandlers.set(msg.id, handler);
       }
     });
 
@@ -282,7 +480,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     try {
       if (!this.client) this.initClient();
       this.skipWelcome = false;
-      await this.client!.cancelAndSend(text);
+      const expanded = await this.expandMentions(text);
+      await this.client!.cancelAndSend(expanded);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] cancelAndSend: ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: friendlyError(err.message) });
@@ -292,17 +491,95 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private async handleSend(text: string): Promise<void> {
     if (!text.trim()) return;
 
+    // Show the user's typed text in the chat as-is (without inlined file
+    // contents), so the message bubble stays readable. The expanded version
+    // — with @file contents prepended — is what actually gets sent to the CLI.
     this.view?.webview.postMessage({ type: 'userMessage', text });
     this.view?.webview.postMessage({ type: 'thinking' });
 
     try {
       if (!this.client) this.initClient();
       this.skipWelcome = false; // first real message — allow chunks through
-      await this.client!.send(text);
+      const expanded = await this.expandMentions(text);
+      await this.client!.send(expanded);
     } catch (err: any) {
       this.output.appendLine(`[ERROR] ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: friendlyError(err.message) });
     }
+  }
+
+  /**
+   * Workspace file search for @-mentions in the chat input. Uses VS Code's
+   * indexed glob matcher so results match what the file picker shows.
+   * Cap at 20 entries — the dropdown isn't meant for browsing.
+   */
+  private async handleFileSearch(query: string, queryId: number): Promise<void> {
+    try {
+      const trimmed = (query ?? '').trim();
+      // Empty query returns recent files (fallback to a wildcard).
+      const pattern = trimmed ? `**/*${trimmed}*` : '**/*';
+      const exclude = '**/{node_modules,.git,dist,build,out,.next,.codeep}/**';
+      const uris = await vscode.workspace.findFiles(pattern, exclude, 20);
+      const items = uris.map((u) => ({
+        path: vscode.workspace.asRelativePath(u),
+        name: u.path.split('/').pop() ?? '',
+      }));
+      this.view?.webview.postMessage({ type: 'fileSearchResults', queryId, items });
+    } catch (err: any) {
+      this.view?.webview.postMessage({ type: 'fileSearchResults', queryId, items: [] });
+      this.output.appendLine(`[fileSearch] ${err.message}`);
+    }
+  }
+
+  /**
+   * Replace @-mentions in a user prompt with an "[Attached files]" preamble,
+   * so the agent has the file content in-context without us needing CLI-side
+   * state. Mentions remain visible in the original message text, which keeps
+   * the chat bubble readable.
+   *
+   * - Mention syntax: `@<relative-path>` — anything up to whitespace.
+   * - Files larger than 200 KB are skipped with a marker rather than embedded
+   *   to avoid blowing up the prompt.
+   * - Missing files are silently dropped (typo, stale path).
+   */
+  private async expandMentions(text: string): Promise<string> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) return text;
+
+    const MENTION = /(^|\s)@([^\s@]+)/g;
+    const matches = [...text.matchAll(MENTION)];
+    if (matches.length === 0) return text;
+
+    const MAX_BYTES = 200 * 1024;
+    const seen = new Set<string>();
+    const attachments: string[] = [];
+
+    for (const m of matches) {
+      const rel = m[2];
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+      // Try each workspace folder until one resolves
+      for (const f of folders) {
+        const uri = vscode.Uri.joinPath(f.uri, rel);
+        try {
+          const stat = await vscode.workspace.fs.stat(uri);
+          if (stat.type !== vscode.FileType.File) continue;
+          if (stat.size > MAX_BYTES) {
+            attachments.push(`File: ${rel}\n[skipped — file is ${Math.round(stat.size / 1024)} KB, over the 200 KB inline limit]`);
+            break;
+          }
+          const buf = await vscode.workspace.fs.readFile(uri);
+          const content = Buffer.from(buf).toString('utf8');
+          attachments.push(`File: ${rel}\n\`\`\`\n${content}\n\`\`\``);
+          break;
+        } catch {
+          // Not in this folder — try next
+        }
+      }
+    }
+
+    if (attachments.length === 0) return text;
+    return `[Attached files]\n${attachments.join('\n\n')}\n\n${text}`;
   }
 
   private getHtml(webview: vscode.Webview, cspSource: string): string {
@@ -337,7 +614,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   <div id="messages"></div>
   <div id="agent-status"></div>
   <div id="input-area">
-    <textarea id="input" placeholder="Ask Codeep anything..." rows="1"></textarea>
+    <div id="mention-popup" style="display:none"></div>
+    <textarea id="input" placeholder="Ask Codeep anything (type @ to attach a file)" rows="1"></textarea>
     <button id="btn-send">↑</button>
     <button id="btn-stop" style="display:none">■</button>
   </div>

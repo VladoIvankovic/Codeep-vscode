@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "0.1.19",
+  "version": "0.1.27",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -59,18 +59,26 @@
       {
         "command": "codeep.setApiKey",
         "title": "Codeep: Set API Key"
+      },
+      {
+        "command": "codeep.inlineChat",
+        "title": "Codeep: Edit Selection (Inline)"
       }
     ],
     "menus": {
       "editor/context": [
         {
+          "command": "codeep.inlineChat",
+          "group": "codeep@1"
+        },
+        {
           "command": "codeep.sendSelection",
           "when": "editorHasSelection",
-          "group": "codeep"
+          "group": "codeep@2"
         },
         {
           "command": "codeep.reviewFile",
-          "group": "codeep"
+          "group": "codeep@3"
         }
       ]
     },
@@ -85,6 +93,12 @@
         "key": "ctrl+shift+x",
         "mac": "cmd+shift+x",
         "when": "editorHasSelection"
+      },
+      {
+        "command": "codeep.inlineChat",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {
@@ -116,9 +130,12 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build:webview": "esbuild src/webview/main.ts --bundle --outfile=media/chat.js --format=iife --target=es2020 --platform=browser",
+    "build": "npm run build:extension && npm run build:webview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "watch": "npm run build -- --watch",
-    "package": "vsce package",
+    "package": "npm run build && vsce package",
     "publish": "vsce publish"
   },
   "devDependencies": {

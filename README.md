@@ -19,15 +19,19 @@ npm install -g codeep
 ## Features
 
 - **Chat sidebar** — ask questions, get explanations, request changes, all within VS Code
-- **Streaming responses** — see the AI reply as it's being generated
+- **Streaming responses** — see the AI reply as it's being generated, with rich markdown rendering (links, tables, blockquotes, code blocks, lists)
 - **Live agent plan** — when the agent works on a multi-step task, watch its plan update in real time (○ pending, ◐ in progress, ● done)
 - **Reasoning stream** — collapsible "Thinking" card shows the model's reasoning before the answer (when the model exposes it)
+- **`@file` mentions** — type `@` in the chat input to attach any workspace file. Arrow keys + Enter to pick, file content is sent inline with your prompt
+- **Inline edit** — select code, press `Cmd+Shift+I`, type a one-line instruction ("make this async", "extract to a function"), and the agent rewrites it in place. `Cmd+Z` to undo
 - **Send selection** — highlight code and send it directly to chat (`Cmd+Shift+X`)
 - **Review file** — right-click any file to run an AI code review
 - **Session browser** — list, load, and delete past conversations
 - **Settings panel** — switch AI model, provider, and permission mode without leaving the editor
 - **Inline permission prompts with diff preview** — see exactly what the agent wants to write, edit, or run before approving (no surprises)
 - **New session** — start a fresh conversation at any time
+- **Auto-reconnect** — if the CLI crashes, the extension reconnects on its own with exponential backoff (1s → 30s, max 6 tries)
+- **Status bar item** — always-visible indicator (bottom right) showing connection state and current model. Click to open chat. Turns yellow during reconnect, red on hard failure.
 
 ## Usage
 
@@ -40,6 +44,7 @@ The extension connects to the Codeep CLI automatically on startup. Once connecte
 | Command | Shortcut | Description |
 |---|---|---|
 | Codeep: Open Chat | `Cmd+Shift+C` | Open the chat sidebar |
+| Codeep: Edit Selection (Inline) | `Cmd+Shift+I` | Rewrite the selected code with a natural-language instruction |
 | Codeep: Send Selection to Chat | `Cmd+Shift+X` | Send selected code to chat |
 | Codeep: Review Current File | — | AI review of the active file |
 | Codeep: New Session | — | Start a new conversation |
