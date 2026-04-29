@@ -1,11 +1,33 @@
+# Default excludes — broad patterns first, then re-includes, then final
+# overrides for things that must never ship regardless.
+
 src/**
 node_modules/**
-.gitignore
-tsconfig.json
-tsconfig.webview.json
 **/*.map
 **/*.ts
+
+# Build / dev configuration
+tsconfig.json
+tsconfig.webview.json
+.gitignore
+.vscodeignore
+.github/**
+.vscode/**
+
+# Local user / CLI workspace state — never ship
+.codeep/**
+
+# Build artifacts
+*.vsix
+
+# Re-include compiled output and assets users actually need
 !dist/**
-media/.DS_Store
 !media/**
 !Codeep.png
+!CHANGELOG.md
+!README.md
+!LICENSE
+
+# Always-excluded — these come AFTER the !-rules so they win even when a
+# re-include rule above would otherwise pull them back in.
+**/.DS_Store
