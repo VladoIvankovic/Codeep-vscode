@@ -1,0 +1,93 @@
+name: Release
+
+# Triggered when a tag matching v*.*.* is pushed. The job builds, type-checks,
+# packages the extension, publishes to the VS Code Marketplace, and creates a
+# GitHub Release with the .vsix attached and notes pulled from CHANGELOG.md.
+#
+# Required repository secrets:
+#   VSCE_PAT   — Marketplace Personal Access Token, scope "Marketplace: Manage"
+#
+# Manual trigger (workflow_dispatch) is also exposed for re-runs without
+# pushing a new tag.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.27)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed for creating GitHub Releases
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          else
+            REF="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${REF#v}"
+          echo "tag=$REF" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Package extension
+        run: npx vsce package --out "codeep-${{ steps.ver.outputs.version }}.vsix"
+
+      - name: Extract CHANGELOG section
+        id: notes
+        run: |
+          # Pull the section between "## [VERSION]" and the next "## [" header.
+          # If no entry is found, fall back to a minimal placeholder so the
+          # release still gets created.
+          awk -v v="${{ steps.ver.outputs.version }}" '
+            $0 ~ "^## \\[" v "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No changelog entry for v${{ steps.ver.outputs.version }} — using fallback." >&2
+            echo "Release ${{ steps.ver.outputs.tag }}." > release-notes.md
+          fi
+          cat release-notes.md
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath "codeep-${{ steps.ver.outputs.version }}.vsix"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --notes-file release-notes.md \
+            "codeep-${{ steps.ver.outputs.version }}.vsix"
