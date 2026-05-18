@@ -4,6 +4,57 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-05-18
+
+### Added
+- **Native diff editor for agent file edits.** When the agent asks
+  permission to `write_file` or `edit_file`, the extension now opens a
+  real `vscode.diff` editor alongside the inline permission card —
+  syntax highlighted, with gutter markers, and respecting the user's
+  editor settings. The diff closes automatically once the user clicks
+  Allow / Deny.
+- **Accept / Reject CodeLens inside the diff editor.** Three actions
+  appear at the top of the proposed-change side:
+  `$(check) Accept`, `$(x) Reject`, and `(Allow this tool for session)`.
+  Clicking either resolves the permission without going back to the
+  chat sidebar, and the inline card auto-resolves to stay in sync.
+- New file scheme `codeep-edit:` for the right-hand-side virtual
+  document — VS Code never tries to save it or list it in the file
+  picker.
+- **`Codeep: Attach Active File to Chat`** command (`Cmd+Shift+A` /
+  `Ctrl+Shift+A`) — prepends `@<path>` to the chat input without
+  auto-sending. Closest equivalent to the "Add Context" buttons in
+  Cursor / Continue. Also available from the editor right-click menu.
+- **`@symbol` mentions.** The `@` autocomplete popup now lists workspace
+  symbols (functions, classes, methods) alongside files. Pick one and the
+  symbol's definition is embedded in the prompt with a few lines of
+  surrounding context — uses VS Code's workspace symbol provider so it
+  works for every language with a language server installed.
+- **MCP server config from the command palette.** Three new commands manage
+  `~/.codeep/mcp_servers.json` and `<workspace>/.codeep/mcp_servers.json`
+  without JSON editing:
+  - **Codeep: Add MCP Server…** — guided wizard (scope + name + command + args)
+  - **Codeep: Remove MCP Server…** — quick-pick across both scopes
+  - **Codeep: Open MCP Servers Config** — opens the JSON for power-users
+  The extension also auto-loads these files on session start and passes them
+  to the CLI via `mcpServers`, so a server you add here works in every
+  session, no further wiring needed.
+
+### Changed
+- **Permission card labels updated.** "Allow always" is renamed to
+  "Allow for this session" — the CLI clears this state when the
+  process restarts, so the previous label overstated the lifetime.
+  Tooltips spell out the scope of each choice.
+- **Diff-editor race condition fixed.** The diff would occasionally
+  stay orphaned if the user clicked Allow before VS Code finished
+  opening the editor; the cleanup now awaits the open promise.
+
+### Notes
+- Requires Codeep CLI ≥ 1.4.0 for the richer `toolInput` payload on
+  permission requests (`new_content`, `old_string`, `new_string`).
+  Older CLIs still work; the diff editor just won't open for those
+  fields it can't see.
+
 ## [0.1.27] — 2026-04-29
 
 ### Added

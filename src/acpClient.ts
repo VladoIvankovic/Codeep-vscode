@@ -1,5 +1,59 @@
 import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+
+interface McpServerEntry {
+  name: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
+/**
+ * Load the merged MCP server config for a VS Code workspace.
+ * Mirrors `src/utils/mcpConfig.ts` in the CLI — kept in-extension (instead
+ * of importing from CLI source) so the extension stays self-contained.
+ * Project config wins over global on name collisions; the CLI further
+ * merges this with anything ACP would pass on its own.
+ */
+function loadMcpServerConfigForVsCode(workspaceRoot: string): McpServerEntry[] {
+  const candidates = [
+    join(homedir(), '.codeep', 'mcp_servers.json'),
+    workspaceRoot ? join(workspaceRoot, '.codeep', 'mcp_servers.json') : '',
+  ].filter(Boolean);
+
+  const byName = new Map<string, McpServerEntry>();
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    let raw: string;
+    try { raw = readFileSync(path, 'utf-8'); } catch { continue; }
+    let parsed: { mcpServers?: Record<string, Omit<McpServerEntry, 'name'>> | McpServerEntry[] };
+    try { parsed = JSON.parse(raw); } catch { continue; }
+    const servers = parsed.mcpServers;
+    if (!servers) continue;
+    if (Array.isArray(servers)) {
+      for (const s of servers) {
+        if (s && typeof s.name === 'string' && typeof s.command === 'string') {
+          byName.set(s.name, { ...s, args: Array.isArray(s.args) ? s.args.filter(a => typeof a === 'string') : [] });
+        }
+      }
+    } else {
+      for (const [name, cfg] of Object.entries(servers)) {
+        if (cfg && typeof cfg.command === 'string') {
+          byName.set(name, {
+            name,
+            command: cfg.command,
+            args: Array.isArray(cfg.args) ? cfg.args.filter(a => typeof a === 'string') : [],
+            env: cfg.env && typeof cfg.env === 'object' ? cfg.env : undefined,
+          });
+        }
+      }
+    }
+  }
+  return [...byName.values()];
+}
 
 export class AcpClient extends EventEmitter {
   private process: ChildProcess | null = null;
@@ -96,8 +150,18 @@ export class AcpClient extends EventEmitter {
     this.reconnectAttempts = 0;
     this.emit('connected');
 
-    // Create session — params.cwd is what server expects
-    const session = await this.request('session/new', { cwd: this.workspacePath, fresh: this.startFresh });
+    // Create session — params.cwd is what server expects. Also pass any
+    // MCP server config from the workspace's `.codeep/mcp_servers.json` (or
+    // the global `~/.codeep/mcp_servers.json`) so the agent gets the same
+    // tools whether you launch from Zed, the VS Code extension, or `codeep`
+    // directly. The CLI also reads these files itself; ACP-provided ones win
+    // on name collisions.
+    const mcpServers = loadMcpServerConfigForVsCode(this.workspacePath);
+    const session = await this.request('session/new', {
+      cwd: this.workspacePath,
+      fresh: this.startFresh,
+      ...(mcpServers.length > 0 ? { mcpServers } : {}),
+    });
     this.startFresh = false;
     this.sessionId = session?.sessionId ?? null;
 

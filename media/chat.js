@@ -461,13 +461,14 @@
     const actions = document.createElement("div");
     actions.className = "permission-actions";
     const choices = [
-      ["allow_once", "Allow once"],
-      ["allow_always", "Allow always"],
-      ["reject_once", "Reject"]
+      ["allow_once", "Allow", "Allow this tool just for this call"],
+      ["allow_always", "Allow for this session", "Auto-allow this tool until the CLI restarts"],
+      ["reject_once", "Reject", "Block this call; the agent may try a different approach"]
     ];
-    choices.forEach(([choice, btnLabel]) => {
+    choices.forEach(([choice, btnLabel, tooltip]) => {
       const btn = document.createElement("button");
       btn.textContent = btnLabel;
+      btn.title = tooltip;
       if (choice === "reject_once")
         btn.className = "reject";
       btn.dataset.choice = choice;
@@ -534,7 +535,7 @@
     state.mentionDebounce = setTimeout(() => {
       const id = ++state.mentionQueryId;
       vscode.postMessage({ type: "fileSearch", query: ctx.query, queryId: id });
-    }, 100);
+    }, 300);
     renderMentionPopup();
   }
   function renderMentionPopup() {
@@ -546,22 +547,37 @@
     if (state.mention.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "mention-empty";
-      empty.textContent = state.mention.query ? `No matches for "${state.mention.query}"` : "Type to search files\u2026";
+      empty.textContent = state.mention.query ? `No matches for "${state.mention.query}"` : "Type to search files or symbols\u2026";
       mentionPopup.appendChild(empty);
     } else {
       state.mention.items.forEach((it, i) => {
         const row = document.createElement("div");
         row.className = "mention-item" + (i === state.mention.selected ? " selected" : "");
         row.dataset.index = String(i);
+        const kind = document.createElement("span");
+        kind.className = "mention-kind";
+        if (it.kind === "symbol") {
+          kind.textContent = "\u0192 ";
+          kind.title = it.symbolKind ?? "Symbol";
+        } else {
+          kind.textContent = "\xB7 ";
+          kind.title = "File";
+        }
         const name = document.createElement("span");
         name.className = "mention-name";
         name.textContent = it.name;
         const path = document.createElement("span");
         path.className = "mention-path";
-        const dir = it.path.slice(0, Math.max(0, it.path.length - it.name.length - 1));
-        path.textContent = dir;
+        if (it.kind === "symbol") {
+          const tail = it.line ? `${it.path}:${it.line}` : it.path;
+          path.textContent = it.containerName ? `${it.containerName} \u2014 ${tail}` : tail;
+        } else {
+          const dir = it.path.slice(0, Math.max(0, it.path.length - it.name.length - 1));
+          path.textContent = dir;
+        }
+        row.appendChild(kind);
         row.appendChild(name);
-        if (dir)
+        if (path.textContent)
           row.appendChild(path);
         mentionPopup.appendChild(row);
       });
@@ -581,7 +597,7 @@
       return;
     const before = inputEl.value.slice(0, state.mention.start);
     const after = inputEl.value.slice(inputEl.selectionStart ?? state.mention.start);
-    const insert = "@" + item.path + " ";
+    const insert = "@" + (item.kind === "symbol" ? item.name : item.path) + " ";
     inputEl.value = before + insert + after;
     const newCaret = before.length + insert.length;
     inputEl.setSelectionRange(newCaret, newCaret);
@@ -669,22 +685,38 @@
   var SHORTCUTS = [
     ["Cmd+Shift+C", "Open chat"],
     ["Cmd+Shift+I", "Edit selection inline"],
-    ["Cmd+Shift+X", "Send selection"],
+    ["Cmd+Shift+X", "Send selection to chat"],
+    ["Cmd+Shift+A", "Attach active file as @-mention"],
     ["Enter", "Send message"],
-    ["Shift+Enter", "New line"],
-    ["@", "Attach a workspace file"]
+    ["Shift+Enter", "New line in input"],
+    ["@", "Attach a workspace file or symbol"],
+    ["Cmd+K", 'Open VS Code command palette (try "Codeep: \u2026")']
   ];
   var COMMANDS = [
+    // Core
     ["/help", "Show all commands"],
+    ["/status", "Show session info"],
+    ["/cost", "Show token usage and cost"],
+    ["/compact", "Summarize older messages to free up context"],
+    ["/commands", "List custom slash commands in .codeep/commands/*.md"],
+    // Personalization
+    ["/memory", "Add notes that travel with every request in this project"],
+    ["/profile", "Save / load provider + model + settings presets"],
+    // Code workflow
+    ["/diff", "Review git diff with AI"],
     ["/review", "AI code review"],
-    ["/diff", "Review git diff"],
     ["/commit", "Generate commit message"],
-    ["/scan", "Scan project structure"],
     ["/fix", "Fix bugs"],
     ["/test", "Write or run tests"],
-    ["/status", "Show session info"],
-    ["/cost", "Show token usage"],
-    ["/export", "Export conversation"]
+    ["/scan", "Scan project structure"],
+    // Power user
+    ["/checkpoint", "Save a named conversation snapshot"],
+    ["/rewind", "Restore a checkpoint by id"],
+    ["/mcp", "Manage MCP servers (browse, add, remove)"],
+    ["/skills", "Manage skill bundles (browse, install, publish)"],
+    ["/hooks", "Show lifecycle hooks (.codeep/hooks/*.sh)"],
+    ["/openrouter", "OpenRouter routing preferences"],
+    ["/export", "Export conversation as md / json / txt"]
   ];
   function renderSettingsPanel() {
     if (document.activeElement && settingsPanelEl.contains(document.activeElement))
@@ -811,6 +843,29 @@
     });
     cmdSection.appendChild(cmdGrid);
     settingsPanelEl.appendChild(cmdSection);
+    const extSection = makeSection("Extensions");
+    const extGrid = document.createElement("div");
+    extGrid.className = "settings-commands";
+    const EXTENSION_CMDS = [
+      // [label,                         VS Code command id,             tooltip]
+      ["+ MCP server", "codeep.mcpAddServer", "Add an MCP server (wizard writes to .codeep/mcp_servers.json)"],
+      ["Manage MCP", "codeep.mcpRemoveServer", "Remove a configured MCP server"],
+      ["Open MCP config", "codeep.mcpOpenConfig", "Open mcp_servers.json directly"],
+      ["+ Skill bundle", "codeep.skillsCreateBundle", "Scaffold a new project skill bundle"],
+      ["Browse skill bundles", "codeep.skillsBundles", "Open an installed bundle's SKILL.md"],
+      ["Open skills folder", "codeep.skillsOpenFolder", "Reveal .codeep/skills/ in OS file manager"]
+    ];
+    EXTENSION_CMDS.forEach(([label, cmd, tooltip]) => {
+      const btn = document.createElement("button");
+      btn.className = "settings-cmd-chip";
+      btn.textContent = label;
+      btn.title = tooltip;
+      btn.dataset.action = "runVsCodeCommand";
+      btn.dataset.command = cmd;
+      extGrid.appendChild(btn);
+    });
+    extSection.appendChild(extGrid);
+    settingsPanelEl.appendChild(extSection);
   }
 
   // src/webview/sessions.ts
@@ -1052,6 +1107,12 @@
         clearAgentStatus();
         appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput);
         break;
+      case "permissionResolved": {
+        const card = document.querySelector(`.permission-card[data-request-id="${msg.requestId}"]`);
+        if (card)
+          respondPermission(card, msg.choice);
+        break;
+      }
       case "onboarding":
         appendOnboarding();
         break;
@@ -1183,6 +1244,10 @@
       settingsPanelEl.style.display = "none";
       inputEl.value = (btn.dataset.command ?? "") + " ";
       inputEl.focus();
+    }
+    if (btn.dataset.action === "runVsCodeCommand") {
+      vscode.postMessage({ type: "runVsCodeCommand", command: btn.dataset.command ?? "" });
+      settingsPanelEl.style.display = "none";
     }
   });
   vscode.postMessage({ type: "ready" });

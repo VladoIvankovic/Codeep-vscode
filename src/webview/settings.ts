@@ -87,25 +87,43 @@ function makeGroupedModelSelect(
 }
 
 const SHORTCUTS: Array<[string, string]> = [
-  ['Cmd+Shift+C', 'Open chat'],
-  ['Cmd+Shift+I', 'Edit selection inline'],
-  ['Cmd+Shift+X', 'Send selection'],
-  ['Enter', 'Send message'],
-  ['Shift+Enter', 'New line'],
-  ['@', 'Attach a workspace file'],
+  ['Cmd+Shift+C',  'Open chat'],
+  ['Cmd+Shift+I',  'Edit selection inline'],
+  ['Cmd+Shift+X',  'Send selection to chat'],
+  ['Cmd+Shift+A',  'Attach active file as @-mention'],
+  ['Enter',        'Send message'],
+  ['Shift+Enter',  'New line in input'],
+  ['@',            'Attach a workspace file or symbol'],
+  ['Cmd+K',        'Open VS Code command palette (try "Codeep: …")'],
 ];
 
+// Slash commands organised so the panel doesn't sprawl. Each chip
+// clicks-to-insert the command into the input.
 const COMMANDS: Array<[string, string]> = [
-  ['/help', 'Show all commands'],
-  ['/review', 'AI code review'],
-  ['/diff', 'Review git diff'],
-  ['/commit', 'Generate commit message'],
-  ['/scan', 'Scan project structure'],
-  ['/fix', 'Fix bugs'],
-  ['/test', 'Write or run tests'],
-  ['/status', 'Show session info'],
-  ['/cost', 'Show token usage'],
-  ['/export', 'Export conversation'],
+  // Core
+  ['/help',     'Show all commands'],
+  ['/status',   'Show session info'],
+  ['/cost',     'Show token usage and cost'],
+  ['/compact',  'Summarize older messages to free up context'],
+  ['/commands', 'List custom slash commands in .codeep/commands/*.md'],
+  // Personalization
+  ['/memory',   'Add notes that travel with every request in this project'],
+  ['/profile',  'Save / load provider + model + settings presets'],
+  // Code workflow
+  ['/diff',     'Review git diff with AI'],
+  ['/review',   'AI code review'],
+  ['/commit',   'Generate commit message'],
+  ['/fix',      'Fix bugs'],
+  ['/test',     'Write or run tests'],
+  ['/scan',     'Scan project structure'],
+  // Power user
+  ['/checkpoint', 'Save a named conversation snapshot'],
+  ['/rewind',     'Restore a checkpoint by id'],
+  ['/mcp',        'Manage MCP servers (browse, add, remove)'],
+  ['/skills',     'Manage skill bundles (browse, install, publish)'],
+  ['/hooks',      'Show lifecycle hooks (.codeep/hooks/*.sh)'],
+  ['/openrouter', 'OpenRouter routing preferences'],
+  ['/export',     'Export conversation as md / json / txt'],
 ];
 
 export function renderSettingsPanel(): void {
@@ -256,4 +274,33 @@ export function renderSettingsPanel(): void {
   });
   cmdSection.appendChild(cmdGrid);
   settingsPanelEl.appendChild(cmdSection);
+
+  // ── Extensions (MCP + Skills) ──
+  // Surfaced here as a discoverability fix: the audit flagged that these
+  // capabilities are reachable only through the command palette. Each
+  // chip dispatches a `runVsCodeCommand` message the host extension
+  // handles by executing the named VS Code command.
+  const extSection = makeSection('Extensions');
+  const extGrid = document.createElement('div');
+  extGrid.className = 'settings-commands';
+  const EXTENSION_CMDS: Array<[string, string, string]> = [
+    // [label,                         VS Code command id,             tooltip]
+    ['+ MCP server',                   'codeep.mcpAddServer',          'Add an MCP server (wizard writes to .codeep/mcp_servers.json)'],
+    ['Manage MCP',                     'codeep.mcpRemoveServer',       'Remove a configured MCP server'],
+    ['Open MCP config',                'codeep.mcpOpenConfig',         'Open mcp_servers.json directly'],
+    ['+ Skill bundle',                 'codeep.skillsCreateBundle',    'Scaffold a new project skill bundle'],
+    ['Browse skill bundles',           'codeep.skillsBundles',         'Open an installed bundle\'s SKILL.md'],
+    ['Open skills folder',             'codeep.skillsOpenFolder',      'Reveal .codeep/skills/ in OS file manager'],
+  ];
+  EXTENSION_CMDS.forEach(([label, cmd, tooltip]) => {
+    const btn = document.createElement('button');
+    btn.className = 'settings-cmd-chip';
+    btn.textContent = label;
+    btn.title = tooltip;
+    btn.dataset.action = 'runVsCodeCommand';
+    btn.dataset.command = cmd;
+    extGrid.appendChild(btn);
+  });
+  extSection.appendChild(extGrid);
+  settingsPanelEl.appendChild(extSection);
 }

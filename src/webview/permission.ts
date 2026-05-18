@@ -99,14 +99,19 @@ export function appendPermission(
 
   const actions = document.createElement('div');
   actions.className = 'permission-actions';
-  const choices: Array<['allow_once' | 'allow_always' | 'reject_once', string]> = [
-    ['allow_once', 'Allow once'],
-    ['allow_always', 'Allow always'],
-    ['reject_once', 'Reject'],
+  // The CLI's `allow_always` is session-scoped (cleared when the CLI
+  // process exits), not persisted to disk — but "Allow always" reads as
+  // "forever" to most users. Relabel to make the scope explicit and add
+  // a tooltip pointing at the lifetime.
+  const choices: Array<['allow_once' | 'allow_always' | 'reject_once', string, string]> = [
+    ['allow_once',   'Allow',                'Allow this tool just for this call'],
+    ['allow_always', 'Allow for this session', 'Auto-allow this tool until the CLI restarts'],
+    ['reject_once',  'Reject',               'Block this call; the agent may try a different approach'],
   ];
-  choices.forEach(([choice, btnLabel]) => {
+  choices.forEach(([choice, btnLabel, tooltip]) => {
     const btn = document.createElement('button');
     btn.textContent = btnLabel;
+    btn.title = tooltip;
     if (choice === 'reject_once') btn.className = 'reject';
     btn.dataset.choice = choice;
     actions.appendChild(btn);

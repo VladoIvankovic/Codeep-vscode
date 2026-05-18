@@ -36,8 +36,18 @@ export interface SessionListEntry {
 }
 
 export interface FileSearchItem {
-  path: string;
+  /** Visible name shown in the popup row (filename for files, symbol name for symbols). */
   name: string;
+  /** For files: workspace-relative path. For symbols: workspace-relative path of the containing file. */
+  path: string;
+  /** Discriminator. `'file'` is the legacy default when omitted. */
+  kind?: 'file' | 'symbol';
+  /** Symbol-only: human-readable kind ("Function", "Class", "Method"...). Drives the popup icon. */
+  symbolKind?: string;
+  /** Symbol-only: enclosing container (e.g. class name when the symbol is a method). */
+  containerName?: string;
+  /** Symbol-only: 1-based line number of the symbol's defining range. */
+  line?: number;
 }
 
 export interface MentionState {

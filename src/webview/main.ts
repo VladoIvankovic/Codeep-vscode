@@ -240,6 +240,15 @@ window.addEventListener('message', (event: MessageEvent) => {
       appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput);
       break;
 
+    case 'permissionResolved': {
+      // Fired by the extension host when the user answers from the diff
+      // editor's Accept/Reject CodeLens. Resolve the matching inline card
+      // so the two surfaces stay in sync.
+      const card = document.querySelector<HTMLElement>(`.permission-card[data-request-id="${msg.requestId}"]`);
+      if (card) respondPermission(card, msg.choice);
+      break;
+    }
+
     case 'onboarding':
       appendOnboarding();
       break;
@@ -385,6 +394,14 @@ settingsPanelEl.addEventListener('click', (e) => {
     settingsPanelEl.style.display = 'none';
     inputEl.value = (btn.dataset.command ?? '') + ' ';
     inputEl.focus();
+  }
+
+  if (btn.dataset.action === 'runVsCodeCommand') {
+    // Settings panel surfaces VS Code commands as buttons so users don't
+    // have to remember command palette names. Host extension handles the
+    // dispatch (see chatPanel.ts).
+    vscode.postMessage({ type: 'runVsCodeCommand', command: btn.dataset.command ?? '' });
+    settingsPanelEl.style.display = 'none';
   }
 });
 

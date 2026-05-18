@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AcpClient } from './acpClient';
+import { showProposedChange, synthesizeEditedContent, trackPendingPermission, clearPendingPermissionForUri } from './diffPreview';
 
 export interface ProviderEntry {
   id: string;
@@ -46,6 +47,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   // installed its own listener — fine for one-off prompts but every webview
   // message ran through every active handler, scaling O(n) per message.
   private pendingPermissions = new Map<number, (reply: any) => void>();
+  /** Set by extension.ts so we can refresh the diff CodeLens after a new permission is tracked. */
+  private diffLensRefresher: (() => void) | null = null;
   // Cached provider list from CLI's session/list_providers. Static for the
   // lifetime of a CLI process; cleared on disconnect so a reconnect re-fetches.
   // providersUnavailable=true when the CLI is older than v0.1.34 (the version
@@ -87,6 +90,17 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         case 'send':
           await this.handleSend(msg.text);
           break;
+        case 'runVsCodeCommand': {
+          // Webview "Extensions" panel surfaces palette commands as
+          // buttons. Allowlist the codeep.* prefix so the webview can't
+          // ask us to run arbitrary VS Code commands.
+          const cmd = String(msg.command ?? '');
+          if (cmd.startsWith('codeep.')) {
+            try { await vscode.commands.executeCommand(cmd); }
+            catch (err) { this.output.appendLine(`[runVsCodeCommand] ${cmd}: ${(err as Error).message}`); }
+          }
+          break;
+        }
         case 'cancel':
           this.clearPermissionHandlers();
           this.view?.webview.postMessage({ type: 'cancelPermissions' });
@@ -151,6 +165,40 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     } else {
       this.pendingPrefill = text;
     }
+  }
+
+  /**
+   * Installed by extension.ts so the diff CodeLens provider can be told to
+   * re-query lenses when a new permission request is registered (otherwise
+   * the lens won't appear until the user clicks in the diff editor).
+   */
+  setDiffLensRefresher(fn: () => void): void {
+    this.diffLensRefresher = fn;
+  }
+
+  /**
+   * Forwarded from the diff editor's Accept/Reject CodeLens. Looks up the
+   * pending permission resolver for the given proposed-change URI and
+   * fires it the same way the inline chat buttons do.
+   */
+  respondToPermissionFromDiff(uri: vscode.Uri, choice: 'allow_once' | 'allow_always' | 'reject_once'): void {
+    const { getPendingPermissionForUri } = require('./diffPreview') as typeof import('./diffPreview');
+    const requestId = getPendingPermissionForUri(uri);
+    if (requestId === null) {
+      vscode.window.showInformationMessage('Codeep: no pending permission for this diff (already resolved?).');
+      return;
+    }
+    const resolver = this.pendingPermissions.get(requestId);
+    if (!resolver) {
+      vscode.window.showInformationMessage('Codeep: permission already responded to.');
+      return;
+    }
+    resolver({ choice });
+    this.pendingPermissions.delete(requestId);
+    clearPendingPermissionForUri(uri);
+    // Also forward to the webview so its inline card resolves and animates
+    // out — keeps the two surfaces in sync.
+    this.view?.webview.postMessage({ type: 'permissionResolved', requestId, choice });
   }
 
   /**
@@ -420,6 +468,27 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           toolInput,
         });
 
+        // For write/edit tools, also open a native VS Code diff editor so
+        // the user reviews the full proposed change with syntax highlighting
+        // and gutter markers — the inline webview preview is unavoidably
+        // cramped and truncated.
+        //
+        // We keep the Promise (not the resolved handle) so the resolver
+        // can clean up even when the user answers instantly — the earlier
+        // shape stored the handle in a `.then`, which left the diff
+        // orphaned if the permission reply landed before the open finished.
+        const diffHandlePromise: Promise<{ proposedUri: vscode.Uri; close: () => Promise<void> } | null> =
+          this.openDiffForPermission(toolName, toolInput).catch(() => null);
+        // Register the URI → request-id mapping as soon as the diff opens,
+        // so the Accept/Reject CodeLens can resolve `getPendingPermissionForUri`
+        // and respond from inside the diff editor without going back to chat.
+        diffHandlePromise.then(handle => {
+          if (handle) {
+            trackPendingPermission(handle.proposedUri, msg.id);
+            this.diffLensRefresher?.();  // nudge VS Code to re-render lenses
+          }
+        });
+
         // Register a one-shot resolver. The main webview message switch picks
         // it up via pendingPermissions and forwards the reply to the CLI.
         this.pendingPermissions.set(msg.id, (reply: any) => {
@@ -431,6 +500,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
               ? { type: 'selected', optionId }
               : { type: 'cancelled' },
           });
+          // Close the diff editor we opened (if any). Await the open promise
+          // first so we cover the case where the user answered faster than
+          // the diff finished opening. Best-effort — failures are silent
+          // because the diff might already be closed manually. Also drops
+          // the URI → request-id mapping so a stray late lens click can't
+          // re-fire the resolver.
+          diffHandlePromise.then(h => {
+            if (h) clearPendingPermissionForUri(h.proposedUri);
+            return h?.close().catch(() => {});
+          });
         });
       }
     });
@@ -439,6 +518,60 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       this.output.appendLine('[ACP ERROR] ' + err.message);
       this.view?.webview.postMessage({ type: 'error', text: err.message });
     });
+  }
+
+  /**
+   * Open a native VS Code diff editor for a pending write/edit permission.
+   * Returns a handle the caller can use to close the diff once the user
+   * answers. Returns null for tools we don't preview (commands, deletes,
+   * etc. — those don't have a meaningful "before vs after" view).
+   */
+  private async openDiffForPermission(
+    toolName: string,
+    toolInput: any,
+  ): Promise<{ proposedUri: vscode.Uri; close: () => Promise<void> } | null> {
+    const filePath: string | undefined = toolInput?.path;
+    if (!filePath) return null;
+
+    try {
+      if (toolName === 'write_file') {
+        // `new_content` may be truncated by the agent — use it for the
+        // diff preview anyway; user is reviewing intent, not byte-perfect
+        // output. The actual write uses the full content server-side.
+        const newContent: string = toolInput.new_content ?? toolInput.content ?? '';
+        if (!newContent) return null;
+        return await showProposedChange(filePath, newContent);
+      }
+
+      if (toolName === 'edit_file') {
+        const oldString: string = toolInput.old_string ?? '';
+        const newString: string = toolInput.new_string ?? '';
+        if (!oldString && !newString) return null;
+
+        // Read current file contents from disk and synthesize the post-edit
+        // version. If the file isn't on disk (rare for edit_file but possible
+        // for proposed new files) fall back to a minimal preview.
+        let currentContent = '';
+        try {
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+          currentContent = Buffer.from(bytes).toString('utf-8');
+        } catch {
+          // File not readable — preview just the new_string.
+          return await showProposedChange(filePath, newString);
+        }
+        const proposed = synthesizeEditedContent(currentContent, oldString, newString);
+        if (proposed === null) {
+          // old_string wasn't found in the file (agent might be working from
+          // stale state). Showing the user the new_string in isolation is
+          // still more useful than no preview.
+          return await showProposedChange(filePath, newString);
+        }
+        return await showProposedChange(filePath, proposed);
+      }
+    } catch (err) {
+      this.output.appendLine(`[diff-preview] failed to open: ${(err as Error).message}`);
+    }
+    return null;
   }
 
   private async handleListSessions(): Promise<void> {
@@ -509,21 +642,65 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Workspace file search for @-mentions in the chat input. Uses VS Code's
-   * indexed glob matcher so results match what the file picker shows.
-   * Cap at 20 entries — the dropdown isn't meant for browsing.
+   * Workspace search for @-mentions in the chat input. Returns both:
+   *   - files matching the query (uses VS Code's indexed glob matcher)
+   *   - workspace symbols (functions / classes / methods) matching the
+   *     query when it looks "symbol-y" (starts with a letter that could
+   *     plausibly be an identifier, not a path).
+   *
+   * Results are merged and capped at 20 total so the dropdown stays
+   * usable. Symbol search is intentionally fired in parallel with the
+   * file search and joined — the empty-query case shouldn't ask the
+   * symbol provider for the entire workspace.
    */
   private async handleFileSearch(query: string, queryId: number): Promise<void> {
     try {
       const trimmed = (query ?? '').trim();
-      // Empty query returns recent files (fallback to a wildcard).
-      const pattern = trimmed ? `**/*${trimmed}*` : '**/*';
       const exclude = '**/{node_modules,.git,dist,build,out,.next,.codeep}/**';
-      const uris = await vscode.workspace.findFiles(pattern, exclude, 20);
-      const items = uris.map((u) => ({
-        path: vscode.workspace.asRelativePath(u),
-        name: u.path.split('/').pop() ?? '',
-      }));
+      const pattern = trimmed ? `**/*${trimmed}*` : '**/*';
+
+      const filesPromise: Promise<{ path: string; name: string; kind: 'file' }[]> =
+        Promise.resolve(vscode.workspace.findFiles(pattern, exclude, 15)).then(uris =>
+          uris.map(u => ({
+            path: vscode.workspace.asRelativePath(u),
+            name: u.path.split('/').pop() ?? '',
+            kind: 'file' as const,
+          })),
+        );
+
+      // Only query the symbol provider when the user has typed at least one
+      // character that doesn't look like a path segment. Path-style queries
+      // (containing `/`, `.`, leading lowercase typical of file names) are
+      // very rarely meant to look up symbols, and the provider call is
+      // surprisingly slow on large workspaces.
+      const symbolsPromise: Promise<{ path: string; name: string; kind: 'symbol'; symbolKind?: string; containerName?: string; line?: number }[]> =
+        (trimmed.length >= 1 && !/[/\\]/.test(trimmed))
+          ? (vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+              'vscode.executeWorkspaceSymbolProvider',
+              trimmed,
+            ) as Promise<vscode.SymbolInformation[] | undefined>).then(syms => {
+              if (!syms) return [];
+              return syms.slice(0, 15).map(s => ({
+                name: s.name,
+                path: vscode.workspace.asRelativePath(s.location.uri),
+                kind: 'symbol' as const,
+                symbolKind: vscode.SymbolKind[s.kind],
+                containerName: s.containerName || undefined,
+                line: s.location.range.start.line + 1,
+              }));
+            }).catch(() => [])
+          : Promise.resolve([]);
+
+      const [files, symbols] = await Promise.all([filesPromise, symbolsPromise]);
+
+      // Merge: symbols first when the query likely targets a symbol (no
+      // dot, no slash, capitalized or with a paren), files first otherwise.
+      // Trim to 20 total — popup isn't meant for browsing.
+      const symbolFirst = /^[A-Z_]/.test(trimmed) || trimmed.includes('(');
+      const items = symbolFirst
+        ? [...symbols, ...files].slice(0, 20)
+        : [...files, ...symbols].slice(0, 20);
+
       this.view?.webview.postMessage({ type: 'fileSearchResults', queryId, items });
     } catch (err: any) {
       this.view?.webview.postMessage({ type: 'fileSearchResults', queryId, items: [] });
@@ -537,10 +714,13 @@ export class ChatPanel implements vscode.WebviewViewProvider {
    * state. Mentions remain visible in the original message text, which keeps
    * the chat bubble readable.
    *
-   * - Mention syntax: `@<relative-path>` — anything up to whitespace.
-   * - Files larger than 200 KB are skipped with a marker rather than embedded
-   *   to avoid blowing up the prompt.
-   * - Missing files are silently dropped (typo, stale path).
+   * Mention syntax: `@<token>` — anything up to whitespace. The token is
+   * resolved in this order:
+   *   1. As a workspace-relative file path → embed the file's contents
+   *      (capped at 200 KB to avoid blowing up the prompt).
+   *   2. As a workspace symbol name (function / class / method) → embed
+   *      the symbol's definition range with a few lines of context.
+   *   3. Drop silently (typo, stale name).
    */
   private async expandMentions(text: string): Promise<string> {
     const folders = vscode.workspace.workspaceFolders;
@@ -551,35 +731,75 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     if (matches.length === 0) return text;
 
     const MAX_BYTES = 200 * 1024;
+    const SYMBOL_CONTEXT_LINES = 3;
     const seen = new Set<string>();
     const attachments: string[] = [];
 
     for (const m of matches) {
-      const rel = m[2];
-      if (seen.has(rel)) continue;
-      seen.add(rel);
-      // Try each workspace folder until one resolves
+      const token = m[2];
+      if (seen.has(token)) continue;
+      seen.add(token);
+
+      // 1. Try as a workspace-relative file path.
+      let resolved = false;
       for (const f of folders) {
-        const uri = vscode.Uri.joinPath(f.uri, rel);
+        const uri = vscode.Uri.joinPath(f.uri, token);
         try {
           const stat = await vscode.workspace.fs.stat(uri);
           if (stat.type !== vscode.FileType.File) continue;
           if (stat.size > MAX_BYTES) {
-            attachments.push(`File: ${rel}\n[skipped — file is ${Math.round(stat.size / 1024)} KB, over the 200 KB inline limit]`);
-            break;
+            attachments.push(`File: ${token}\n[skipped — file is ${Math.round(stat.size / 1024)} KB, over the 200 KB inline limit]`);
+          } else {
+            const buf = await vscode.workspace.fs.readFile(uri);
+            const content = Buffer.from(buf).toString('utf8');
+            attachments.push(`File: ${token}\n\`\`\`\n${content}\n\`\`\``);
           }
-          const buf = await vscode.workspace.fs.readFile(uri);
-          const content = Buffer.from(buf).toString('utf8');
-          attachments.push(`File: ${rel}\n\`\`\`\n${content}\n\`\`\``);
+          resolved = true;
           break;
         } catch {
           // Not in this folder — try next
         }
       }
+      if (resolved) continue;
+
+      // 2. Try as a workspace symbol. We take the first exact-name match
+      // (or first overall if no exact). The mention popup already showed
+      // the user which one they were picking, but if multiple symbols
+      // share the name we surface a "showing 1 of N" hint so the agent
+      // knows there's ambiguity and can ask the user to disambiguate.
+      try {
+        const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+          'vscode.executeWorkspaceSymbolProvider',
+          token,
+        );
+        const exactMatches = symbols?.filter(s => s.name === token) ?? [];
+        const symbol = exactMatches[0] ?? symbols?.[0];
+        if (!symbol) continue;
+
+        const symUri = symbol.location.uri;
+        const symRel = vscode.workspace.asRelativePath(symUri);
+        const range = symbol.location.range;
+        const buf = await vscode.workspace.fs.readFile(symUri);
+        const lines = Buffer.from(buf).toString('utf8').split(/\r?\n/);
+        const startLine = Math.max(0, range.start.line - SYMBOL_CONTEXT_LINES);
+        const endLine = Math.min(lines.length - 1, range.end.line + SYMBOL_CONTEXT_LINES);
+        const slice = lines.slice(startLine, endLine + 1).join('\n');
+        const kindLabel = vscode.SymbolKind[symbol.kind] ?? 'Symbol';
+        const container = symbol.containerName ? ` (${symbol.containerName})` : '';
+        const ambiguity = exactMatches.length > 1
+          ? `\n[Note: ${exactMatches.length} symbols share this name — showing the first match. Other matches: ${exactMatches.slice(1, 4).map(s => vscode.workspace.asRelativePath(s.location.uri)).join(', ')}${exactMatches.length > 4 ? '…' : ''}]`
+          : '';
+        attachments.push(
+          `Symbol: ${symbol.name}${container} — ${kindLabel} in ${symRel}:${range.start.line + 1}${ambiguity}\n\`\`\`\n${slice}\n\`\`\``,
+        );
+      } catch {
+        // Symbol provider unavailable or threw — drop the mention silently
+        // rather than fail the whole prompt.
+      }
     }
 
     if (attachments.length === 0) return text;
-    return `[Attached files]\n${attachments.join('\n\n')}\n\n${text}`;
+    return `[Attached context]\n${attachments.join('\n\n')}\n\n${text}`;
   }
 
   private getHtml(webview: vscode.Webview, cspSource: string): string {

@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "0.1.27",
+  "version": "0.2.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -63,6 +63,34 @@
       {
         "command": "codeep.inlineChat",
         "title": "Codeep: Edit Selection (Inline)"
+      },
+      {
+        "command": "codeep.attachActiveFile",
+        "title": "Codeep: Attach Active File to Chat"
+      },
+      {
+        "command": "codeep.mcpAddServer",
+        "title": "Codeep: Add MCP Server…"
+      },
+      {
+        "command": "codeep.mcpRemoveServer",
+        "title": "Codeep: Remove MCP Server…"
+      },
+      {
+        "command": "codeep.mcpOpenConfig",
+        "title": "Codeep: Open MCP Servers Config"
+      },
+      {
+        "command": "codeep.skillsBundles",
+        "title": "Codeep: Browse Skill Bundles…"
+      },
+      {
+        "command": "codeep.skillsCreateBundle",
+        "title": "Codeep: Create Skill Bundle…"
+      },
+      {
+        "command": "codeep.skillsOpenFolder",
+        "title": "Codeep: Open Skills Folder"
       }
     ],
     "menus": {
@@ -77,8 +105,12 @@
           "group": "codeep@2"
         },
         {
-          "command": "codeep.reviewFile",
+          "command": "codeep.attachActiveFile",
           "group": "codeep@3"
+        },
+        {
+          "command": "codeep.reviewFile",
+          "group": "codeep@4"
         }
       ]
     },
@@ -98,6 +130,12 @@
         "command": "codeep.inlineChat",
         "key": "ctrl+shift+i",
         "mac": "cmd+shift+i",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeep.attachActiveFile",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
         "when": "editorTextFocus"
       }
     ],

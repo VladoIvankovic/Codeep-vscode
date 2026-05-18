@@ -1,8 +1,64 @@
 import * as vscode from 'vscode';
 import { ChatPanel, type ChatStatusState } from './chatPanel';
+import { registerDiffPreview, DIFF_PREVIEW_SCHEME } from './diffPreview';
+import { DiffPreviewCodeLensProvider } from './diffCodeLens';
+import { listServers, addServer, removeServer, configPath, McpScope, VsCodeMcpServer } from './mcpConfigFile';
 
 export function activate(context: vscode.ExtensionContext) {
+  // Register before ChatPanel — chatPanel.ts calls showProposedChange()
+  // which requires the provider to exist.
+  registerDiffPreview(context);
+
   const chatPanel = new ChatPanel(context);
+
+  // Accept / Reject CodeLens above the proposed-change diff editor — lets
+  // the user respond to a permission request from the diff itself without
+  // round-tripping to the chat sidebar.
+  const codeLensProvider = new DiffPreviewCodeLensProvider();
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider({ scheme: DIFF_PREVIEW_SCHEME }, codeLensProvider),
+  );
+  // Expose a refresher to ChatPanel so it can re-query lenses after a
+  // permission request appears (initial doc opens before VS Code asks for
+  // lenses, so we need to nudge after we register the URI mapping).
+  chatPanel.setDiffLensRefresher(() => codeLensProvider.refresh());
+
+  // Commands fired by the lens. Forward to the chat panel which already
+  // tracks pending permission resolvers — same code path as the webview
+  // Allow/Reject buttons.
+  const respondFromDiff = (uriStr: string, choice: 'allow_once' | 'allow_always' | 'reject_once') => {
+    try {
+      const uri = vscode.Uri.parse(uriStr);
+      chatPanel.respondToPermissionFromDiff(uri, choice);
+    } catch (err) {
+      vscode.window.showWarningMessage(`Codeep: could not respond to diff (${(err as Error).message})`);
+    }
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeep.acceptProposedChange', (uriStr: string) =>
+      respondFromDiff(uriStr, 'allow_once')),
+    vscode.commands.registerCommand('codeep.acceptProposedChangeAlways', (uriStr: string) =>
+      respondFromDiff(uriStr, 'allow_always')),
+    vscode.commands.registerCommand('codeep.rejectProposedChange', (uriStr: string) =>
+      respondFromDiff(uriStr, 'reject_once')),
+  );
+
+  // If the user closes the diff tab without clicking Accept / Reject, treat
+  // that as an implicit reject so the agent doesn't hang forever waiting on
+  // a permission reply. Same outcome as if they'd clicked Reject in the
+  // chat sidebar — clean failure rather than mysterious timeout.
+  context.subscriptions.push(
+    vscode.window.tabGroups.onDidChangeTabs((evt) => {
+      for (const tab of evt.closed) {
+        const input = tab.input;
+        if (input instanceof vscode.TabInputTextDiff) {
+          if (input.modified.scheme === DIFF_PREVIEW_SCHEME) {
+            chatPanel.respondToPermissionFromDiff(input.modified, 'reject_once');
+          }
+        }
+      }
+    }),
+  );
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -76,6 +132,22 @@ export function activate(context: vscode.ExtensionContext) {
       const file = vscode.workspace.asRelativePath(editor.document.uri);
       chatPanel.sendToChat(`\`\`\`${lang}\n// ${file}\n${selection}\n\`\`\``);
       vscode.commands.executeCommand('workbench.view.extension.codeep');
+    })
+  );
+
+  // Command: attach active file as @-mention in chat input. Lighter than
+  // sendSelection — doesn't auto-send, just prepends `@<path>` so the user
+  // can add a question. Closest equivalent to Cursor's "Add Context" flow.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeep.attachActiveFile', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage('Codeep: no active editor to attach.');
+        return;
+      }
+      const rel = vscode.workspace.asRelativePath(editor.document.uri);
+      chatPanel.sendToChat(`@${rel} `);
+      await vscode.commands.executeCommand('workbench.view.extension.codeep');
     })
   );
 
@@ -239,6 +311,204 @@ export function activate(context: vscode.ExtensionContext) {
         );
       }
     })
+  );
+
+  // ── MCP server management ──────────────────────────────────────────────────
+  // Wraps the same `.codeep/mcp_servers.json` files the CLI reads, so the
+  // user can add an MCP server through the command palette without having
+  // to know the file format. Changes take effect on the next session/new
+  // (start a new session or reload the window).
+  const workspaceRoot = (): string | undefined => {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeep.mcpAddServer', async () => {
+      const root = workspaceRoot();
+      const scopePick = await vscode.window.showQuickPick(
+        [
+          { label: 'Project (.codeep/mcp_servers.json)', value: 'project' as McpScope, picked: !!root, description: root ? '' : 'Open a workspace first' },
+          { label: 'Global (~/.codeep/mcp_servers.json)', value: 'global' as McpScope },
+        ],
+        { placeHolder: 'Where should this MCP server be saved?' },
+      );
+      if (!scopePick) return;
+      if (scopePick.value === 'project' && !root) {
+        vscode.window.showWarningMessage('Codeep: open a workspace folder first to save a project-scoped MCP server.');
+        return;
+      }
+
+      const name = await vscode.window.showInputBox({
+        prompt: 'Server name (also used as the agent-side tool prefix: `<name>__<tool>`)',
+        placeHolder: 'e.g. fs, gh, postgres',
+        validateInput: (v) => /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(v.trim()) ? null : 'Letters, digits, _ and - only; must start with a letter; max 32 chars',
+      });
+      if (!name) return;
+
+      const command = await vscode.window.showInputBox({
+        prompt: 'Command to spawn the MCP server',
+        placeHolder: 'e.g. npx, uvx, /path/to/server',
+      });
+      if (!command) return;
+
+      const argsRaw = await vscode.window.showInputBox({
+        prompt: 'Arguments (space-separated, leave blank for none)',
+        placeHolder: 'e.g. @modelcontextprotocol/server-filesystem /path',
+      });
+      // Simple split — quoted paths with spaces aren't supported; for those
+      // the user should edit the JSON directly.
+      const args = argsRaw?.trim() ? argsRaw.trim().split(/\s+/) : [];
+
+      const server: VsCodeMcpServer = { name: name.trim(), command: command.trim(), args };
+      try {
+        addServer(scopePick.value, server, root);
+        vscode.window.showInformationMessage(
+          `Codeep: MCP server "${server.name}" saved (${scopePick.value}). Start a new session to spawn it.`,
+          'Reload Window',
+        ).then(choice => {
+          if (choice === 'Reload Window') vscode.commands.executeCommand('workbench.action.reloadWindow');
+        });
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Codeep: Failed to save MCP server — ${err?.message || String(err)}`);
+      }
+    }),
+
+    vscode.commands.registerCommand('codeep.mcpRemoveServer', async () => {
+      const root = workspaceRoot();
+      // Build a combined list across both scopes so the user can pick from one menu.
+      const items: (vscode.QuickPickItem & { scope: McpScope; serverName: string })[] = [];
+      for (const s of listServers('project', root)) {
+        items.push({ label: s.name, description: 'project', detail: `${s.command} ${s.args.join(' ')}`, scope: 'project', serverName: s.name });
+      }
+      for (const s of listServers('global', root)) {
+        items.push({ label: s.name, description: 'global', detail: `${s.command} ${s.args.join(' ')}`, scope: 'global', serverName: s.name });
+      }
+      if (items.length === 0) {
+        vscode.window.showInformationMessage('Codeep: no MCP servers configured.');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Remove which MCP server?' });
+      if (!pick) return;
+      removeServer(pick.scope, pick.serverName, root);
+      vscode.window.showInformationMessage(`Codeep: removed MCP server "${pick.serverName}" (${pick.scope}). Reload window to take effect.`);
+    }),
+
+    vscode.commands.registerCommand('codeep.skillsBundles', async () => {
+      const root = workspaceRoot();
+      if (!root) { vscode.window.showWarningMessage('Codeep: open a workspace first.'); return; }
+      const skillsDir = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.codeep', 'skills');
+      try {
+        const entries = await vscode.workspace.fs.readDirectory(skillsDir);
+        const bundles = entries.filter(([, type]) => type === vscode.FileType.Directory);
+        if (bundles.length === 0) {
+          vscode.window.showInformationMessage('Codeep: no skill bundles in this workspace. Use "Codeep: Create Skill Bundle…" to add one.');
+          return;
+        }
+        const pick = await vscode.window.showQuickPick(
+          bundles.map(([name]) => ({ label: name, detail: vscode.Uri.joinPath(skillsDir, name, 'SKILL.md').fsPath })),
+          { placeHolder: 'Open which skill bundle?' },
+        );
+        if (!pick) return;
+        const skillFile = vscode.Uri.joinPath(skillsDir, pick.label, 'SKILL.md');
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(skillFile));
+      } catch {
+        vscode.window.showInformationMessage('Codeep: no .codeep/skills/ folder in this workspace yet. Use "Codeep: Create Skill Bundle…" to start one.');
+      }
+    }),
+
+    vscode.commands.registerCommand('codeep.skillsCreateBundle', async () => {
+      const root = workspaceRoot();
+      if (!root) { vscode.window.showWarningMessage('Codeep: open a workspace first.'); return; }
+      const name = await vscode.window.showInputBox({
+        prompt: 'Skill bundle name (lowercase, hyphens allowed; this becomes the directory name)',
+        placeHolder: 'e.g. deploy-staging, lint-fix, hotfix-flow',
+        validateInput: (v) => /^[a-z0-9][a-z0-9-]{0,40}$/.test(v.trim()) ? null : 'Lowercase letters / digits / hyphens; must start with a letter or digit; max 41 chars',
+      });
+      if (!name) return;
+      const description = await vscode.window.showInputBox({
+        prompt: 'One-sentence description (shown in the agent\'s catalog)',
+        placeHolder: 'e.g. Deploy the current branch to staging via npm scripts',
+        validateInput: (v) => v.trim().length > 0 ? null : 'Description is required',
+      });
+      if (!description) return;
+
+      const skillsDir = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.codeep', 'skills', name);
+      const skillFile = vscode.Uri.joinPath(skillsDir, 'SKILL.md');
+      try {
+        await vscode.workspace.fs.stat(skillFile);
+        vscode.window.showWarningMessage(`Codeep: skill "${name}" already exists.`);
+        return;
+      } catch {
+        // Doesn't exist yet — create.
+      }
+
+      const body = `---
+name: ${name}
+description: ${description}
+triggers:
+  - keyword
+  - phrase
+# Optional Codeep-specific keys:
+# codeep-min-version: 2.0.0
+# codeep-requires-mcp: [postgres, filesystem]
+# allowed-tools: [read_file, write_file, execute_command]
+# version: 0.1.0
+---
+
+# ${name}
+
+${description}
+
+## Steps
+
+1. First step
+2. Second step
+3. …
+
+## Notes
+
+Anything else the agent should know — edge cases, gotchas, things to double-check.
+`;
+      await vscode.workspace.fs.writeFile(skillFile, Buffer.from(body, 'utf-8'));
+      const doc = await vscode.workspace.openTextDocument(skillFile);
+      await vscode.window.showTextDocument(doc);
+      vscode.window.showInformationMessage(`Codeep: created skill bundle "${name}". Edit SKILL.md to define the workflow.`);
+    }),
+
+    vscode.commands.registerCommand('codeep.skillsOpenFolder', async () => {
+      const root = workspaceRoot();
+      if (!root) {
+        // No workspace open — fall back to the global folder
+        const home = require('os').homedir() as string;
+        const globalDir = vscode.Uri.file(require('path').join(home, '.codeep', 'skills'));
+        await vscode.commands.executeCommand('revealFileInOS', globalDir);
+        return;
+      }
+      const skillsDir = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.codeep', 'skills');
+      await vscode.commands.executeCommand('revealFileInOS', skillsDir);
+    }),
+
+    vscode.commands.registerCommand('codeep.mcpOpenConfig', async () => {
+      const root = workspaceRoot();
+      const scopePick = await vscode.window.showQuickPick(
+        [
+          { label: 'Project config', detail: root ? configPath('project', root)! : '(no workspace open)', value: 'project' as McpScope },
+          { label: 'Global config', detail: configPath('global')!, value: 'global' as McpScope },
+        ],
+        { placeHolder: 'Open which MCP config file?' },
+      );
+      if (!scopePick) return;
+      const path = configPath(scopePick.value, root);
+      if (!path) { vscode.window.showWarningMessage('Codeep: no workspace open.'); return; }
+      try {
+        // Open even if the file doesn't exist — VS Code prompts to create.
+        const uri = vscode.Uri.file(path);
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Codeep: could not open ${path} — ${err?.message || String(err)}`);
+      }
+    }),
   );
 }
 
