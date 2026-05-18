@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -16,9 +16,22 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["AI", "Chat", "Other"],
-  "keywords": ["ai", "coding", "assistant", "agent", "codeep", "llm"],
-  "activationEvents": ["onView:codeep.chat"],
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "coding",
+    "assistant",
+    "agent",
+    "codeep",
+    "llm"
+  ],
+  "activationEvents": [
+    "onView:codeep.chat"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
