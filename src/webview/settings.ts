@@ -107,11 +107,13 @@ const COMMANDS: Array<[string, string]> = [
   ['/compact',  'Summarize older messages to free up context'],
   ['/commands', 'List custom slash commands in .codeep/commands/*.md'],
   // Personalization
-  ['/memory',   'Add notes that travel with every request in this project'],
-  ['/profile',  'Save / load provider + model + settings presets'],
+  ['/memory',     'Add notes that travel with every request in this project'],
+  ['/profile',    'Save / load provider + model + settings presets'],
+  ['/personality', 'Switch agent tone (concise / verbose / security / senior-reviewer …)'],
   // Agent flow
-  ['/plan',     'Preview the agent\'s plan before any file gets touched'],
-  ['/go',       'Execute the plan from /plan'],
+  ['/plan',       'Preview the agent\'s plan before any file gets touched'],
+  ['/go',         'Execute the plan from /plan'],
+  ['/insights',   'Activity summary over the last N days'],
   // Code workflow
   ['/diff',     'Review git diff with AI'],
   ['/review',   'AI code review'],

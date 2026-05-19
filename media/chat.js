@@ -702,9 +702,11 @@
     // Personalization
     ["/memory", "Add notes that travel with every request in this project"],
     ["/profile", "Save / load provider + model + settings presets"],
+    ["/personality", "Switch agent tone (concise / verbose / security / senior-reviewer \u2026)"],
     // Agent flow
     ["/plan", "Preview the agent's plan before any file gets touched"],
     ["/go", "Execute the plan from /plan"],
+    ["/insights", "Activity summary over the last N days"],
     // Code workflow
     ["/diff", "Review git diff with AI"],
     ["/review", "AI code review"],

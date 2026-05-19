@@ -4,6 +4,39 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.0.3] — 2026-05-19
+
+> Surfaces the new CLI 2.0.3 commands as one-click chips in the Settings panel: `/personality` (six built-in agent tones plus your own from `.codeep/personalities/*.md`) and `/insights` (activity summary over the last N days).
+
+### Added
+
+- **`/personality` chip in Settings → Commands → Personalization.**
+  Click to scaffold a `/personality ` prompt in the chat input. Type a
+  preset name (`concise`, `verbose`, `security`, `senior-reviewer`,
+  `junior-mentor`, `ship-it`) or `off` to clear. Custom personalities
+  from `.codeep/personalities/<name>.md` (project) and
+  `~/.codeep/personalities/<name>.md` (global) work the same way —
+  CLI handles the lookup, extension is just a launcher.
+- **`/insights` chip in Settings → Commands → Agent flow.** Click to
+  insert `/insights ` — append `--days N` for a custom window
+  (default 7 days). Output renders in the chat as a Markdown table:
+  runs, tool actions, active time, by-project / top-tools /
+  most-touched files / recent runs.
+
+### Requires
+
+- CLI **2.0.3+** on your `PATH` (the extension is a thin client over
+  the local `codeep` binary, so the chips just insert text — the CLI
+  does the actual work). Run `npm i -g codeep@latest` or
+  `brew upgrade codeep` if your shell still shows `2.0.2` or older
+  from `codeep --version`.
+
+### Notes
+
+- No webview / activation / settings schema changes — pure additive
+  chips in the existing Settings panel. Safe upgrade with zero
+  migration.
+
 ## [2.0.2] — 2026-05-19
 
 > Catches up with Codeep CLI 2.0.2. Adds `/plan` and `/go` chips in the Settings panel so you can preview the agent's plan (no file changes) before executing — works with the same CLI binary you already have.
