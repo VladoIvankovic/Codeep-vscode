@@ -4,6 +4,29 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.0.2] — 2026-05-19
+
+> Catches up with Codeep CLI 2.0.2. Adds `/plan` and `/go` chips in the Settings panel so you can preview the agent's plan (no file changes) before executing — works with the same CLI binary you already have.
+
+### Added
+
+- **`/plan` + `/go` chips in Settings → Commands.** Click `/plan` to
+  scaffold a plan-preview prompt in the chat input; the CLI generates
+  a numbered plan (files it would touch, commands it would run, risk
+  level) and surfaces it as an assistant message without touching
+  anything. Review, then click `/go` to execute the approved plan
+  through the regular agent loop — MCP tools, lifecycle hooks,
+  permission prompts, and skill bundles all apply unchanged.
+- Pairs with the new plan-mode flow in CLI 2.0.2. The extension is a
+  thin client over the CLI binary, so as long as `codeep` on your
+  `PATH` is 2.0.2+ everything works through the existing webview chat.
+
+### Notes
+
+- This release aligns the marketplace listing with the CLI 2.0.x line.
+  2.0.0 was published on 2026-05-18 as a version-parity bump with no
+  feature changes; 2.0.1 was skipped on the marketplace.
+
 ## [0.2.0] — 2026-05-18
 
 ### Added
