@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {

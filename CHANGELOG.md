@@ -4,6 +4,35 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — 2026-05-20
+
+> Surfaces the new CLI 2.1.0 `/recall` command in the chat autocomplete and the Settings panel. Search across *every* saved session — not just the current one — with `--summarize` for an LLM recap of what you actually did.
+
+### Added
+
+- **`/recall` chip in chat autocomplete + Settings → Commands.** Type
+  `/recall <query>` to search across ALL your saved sessions (vs
+  `/search`, which scans only the current conversation). Append
+  `--summarize` for an LLM-written recap of what you accomplished across
+  the matching sessions, or `--resume` to jump straight into the
+  top-matching one. The extension just inserts the command — the CLI
+  does the cross-session search, ranking, and summary.
+
+### Requires
+
+- CLI **2.1.0+** on your `PATH`. The extension is a thin client over the
+  local `codeep` binary, so `/recall` only works once `codeep --version`
+  reports 2.1.0 or newer. Run `npm i -g codeep@latest` or
+  `brew upgrade codeep` if your shell still shows 2.0.x.
+
+### Notes
+
+- Pure additive command-list entry — no webview, activation, or settings
+  schema changes. Safe upgrade with zero migration. The CLI 2.1.0 release
+  also adds AI-generated session titles (so `/recall` and `/sessions`
+  read like "OAuth2 migration" instead of raw IDs) and portable
+  personalities + custom-command sync via `codeep account sync`.
+
 ## [2.0.3] — 2026-05-19
 
 > Surfaces the new CLI 2.0.3 commands as one-click chips in the Settings panel: `/personality` (six built-in agent tones plus your own from `.codeep/personalities/*.md`) and `/insights` (activity summary over the last N days).

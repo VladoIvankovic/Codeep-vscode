@@ -699,6 +699,7 @@
     ["/cost", "Show token usage and cost"],
     ["/compact", "Summarize older messages to free up context"],
     ["/commands", "List custom slash commands in .codeep/commands/*.md"],
+    ["/recall", "Search across ALL saved sessions (--summarize for an LLM recap)"],
     // Personalization
     ["/memory", "Add notes that travel with every request in this project"],
     ["/profile", "Save / load provider + model + settings presets"],
