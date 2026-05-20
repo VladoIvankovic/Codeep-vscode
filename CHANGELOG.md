@@ -4,6 +4,33 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] — 2026-05-20
+
+> Custom OpenAI-compatible endpoints now work through the extension. Point Codeep at a self-hosted vLLM / LiteLLM / LM Studio server and use it in the VS Code chat — no commercial provider required.
+
+### Added
+
+- **Custom (OpenAI-compatible) endpoint support** (via CLI 2.1.1). Run any
+  OpenAI-compatible server — vLLM, LiteLLM, LM Studio, text-generation-webui —
+  and the extension talks to it through the same `codeep` agent. Configure it
+  once in the CLI: set provider `custom` + `customBaseUrl`
+  (e.g. `http://host:8000/v1`) in `~/.codeep/config.json` or via
+  `/settings → Custom Base URL`, then pick your model with `/model`. The
+  `openai` provider also honors the `OPENAI_BASE_URL` env var.
+
+### Requires
+
+- CLI **2.1.1+** on your `PATH`. The extension is a thin client that spawns
+  `codeep acp`, so endpoint resolution happens in the CLI — there's no separate
+  extension setting and nothing to configure inside VS Code beyond the shared
+  `~/.codeep` config. Run `npm i -g codeep@latest` or `brew upgrade codeep`.
+
+### Notes
+
+- No extension code changes — this is a version-parity release so the
+  marketplace listing reflects that CLI 2.1.1 unlocked self-hosted / custom
+  endpoints for editor users too. Safe upgrade with zero migration.
+
 ## [2.1.0] — 2026-05-20
 
 > Surfaces the new CLI 2.1.0 `/recall` command in the chat autocomplete and the Settings panel. Search across *every* saved session — not just the current one — with `--summarize` for an LLM recap of what you actually did.
