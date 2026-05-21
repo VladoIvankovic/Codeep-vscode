@@ -4,6 +4,87 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — 2026-05-21
+
+> Deeper editor integration: a `@codeep` participant in the native Chat view, a `#codeepSkills` agent tool, generate commit messages from the Source Control panel, a native Sessions tree, JSON validation for MCP config, and Workspace Trust support.
+
+> Also ships the editor features from the (unreleased) 2.2: **Code Actions** lightbulb (Explain / Improve / Add tests / Add doc comment / Fix), a **status-bar model picker**, a **`codeep.baseUrl`** setting for self-hosted OpenAI-compatible endpoints, and a **Get Started walkthrough**. See the 2.2.0 entry below for details.
+
+### Added
+
+- **`@codeep` chat participant.** Invoke Codeep from the native VS Code Chat
+  view — type `@codeep` and ask, or use `@codeep /explain` and `@codeep /review`
+  with a selection. Answers come from your configured Codeep provider/model (via
+  the CLI), not VS Code's model picker. Runs on its own session, independent of
+  the sidebar chat.
+- **`#codeepSkills` language-model tool.** Exposes the workspace's Codeep skill
+  bundles (`.codeep/skills/*/SKILL.md`) to VS Code agent mode and `#`-references,
+  so the native agent can discover and follow your project's own workflows.
+- **Generate Commit Message.** A sparkle button in the Source Control title
+  (and **Codeep: Generate Commit Message** in the palette) reads your staged
+  diff — falling back to the working-tree diff — and writes a Conventional
+  Commits message into the commit box. It asks before replacing a message
+  you've already typed.
+- **Sessions tree view.** A native **Sessions** view in the Codeep sidebar
+  lists your saved conversations (title + age). Click to load one into the
+  chat; use the inline trash to delete; the title bar has New Session +
+  Refresh. Stays in sync with the chat panel.
+- **MCP config validation.** `.codeep/mcp_servers.json` (project and global)
+  now gets JSON schema validation + autocomplete — catches a mistyped
+  `command`/`args`/`env` before you start a session.
+
+### Changed
+
+- **Workspace Trust** — the extension now declares limited support for
+  untrusted workspaces. Codeep runs a local agent that can edit files and run
+  commands, so in untrusted folders you'll be reminded to review permission
+  prompts carefully.
+- **Minimum VS Code raised to 1.95** — required for the stable Chat Participant
+  and Language Model Tools APIs.
+
+### Notes
+
+- No new CLI requirement — 2.3.0 builds on ACP methods already in the shipped
+  CLI. Pure additive UI; safe upgrade with zero migration.
+
+## [2.2.0] — 2026-05-21
+
+> A big editor-experience update: lightbulb code actions (Explain / Fix / Add tests / Add doc comment), a one-click model picker in the status bar, a `codeep.baseUrl` setting for self-hosted endpoints, and a Get Started walkthrough.
+
+### Added
+
+- **Code Actions (lightbulb).** Select code and press `Ctrl+.` for
+  **Explain**, **Improve / refactor**, **Add tests**, and **Add doc comment**.
+  When the line has an error or warning, a **Fix this problem** quick-fix sends
+  the diagnostic plus the code to Codeep. Everything routes through the chat,
+  so the full agent — file edits via the diff preview, MCP tools — is available.
+- **Model picker in the status bar.** Click `Codeep · <model>` (or run
+  **Codeep: Select Provider & Model**) to switch provider + model from a
+  quick-pick. Providers with open-ended catalogs (OpenRouter, Ollama, custom
+  endpoints) let you type a model id.
+- **`codeep.baseUrl` setting.** Point the extension at a self-hosted
+  OpenAI-compatible server (vLLM / LiteLLM / LM Studio / text-generation-webui)
+  without hand-editing `~/.codeep/config.json`. Pairs with `codeep.provider`
+  (`custom` or `openai`) and `codeep.model`.
+- **Get Started walkthrough.** A native VS Code walkthrough covering CLI
+  install, opening the chat, editor actions, and choosing a model / custom
+  endpoint.
+
+### Changed
+
+- **`codeep.provider` and `codeep.model` settings now actually apply.**
+  Previously declared but never wired, they're now pushed to the CLI on every
+  connect (so they stay authoritative across reconnects). Leave them empty to
+  use the CLI's own config.
+
+### Requires
+
+- CLI **2.1.2+** for the full experience (per-provider model lists, and pinning
+  `provider` / `custom` base URL over ACP). Degrades gracefully on older CLIs:
+  the model picker falls back to a free-text input, and `codeep.baseUrl` still
+  works for the `openai` provider via `OPENAI_BASE_URL`. Run
+  `npm i -g codeep@latest` or `brew upgrade codeep`.
+
 ## [2.1.1] — 2026-05-20
 
 > Custom OpenAI-compatible endpoints now work through the extension. Point Codeep at a self-hosted vLLM / LiteLLM / LM Studio server and use it in the VS Code chat — no commercial provider required.

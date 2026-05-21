@@ -3,6 +3,11 @@ import { ChatPanel, type ChatStatusState } from './chatPanel';
 import { registerDiffPreview, DIFF_PREVIEW_SCHEME } from './diffPreview';
 import { DiffPreviewCodeLensProvider } from './diffCodeLens';
 import { listServers, addServer, removeServer, configPath, McpScope, VsCodeMcpServer } from './mcpConfigFile';
+import { registerCodeActions } from './codeActions';
+import { registerGenerateCommitMessage } from './commitMessage';
+import { registerSessionsTree } from './sessionsTree';
+import { registerChatParticipant } from './chatParticipant';
+import { registerCodeepTools } from './codeepTools';
 
 export function activate(context: vscode.ExtensionContext) {
   // Register before ChatPanel — chatPanel.ts calls showProposedChange()
@@ -83,6 +88,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBar);
 
   const renderStatusBar = (s: ChatStatusState): void => {
+    // Default action is "open chat"; the connected state overrides it to the
+    // model picker so a click on "Codeep · <model>" lets you switch models.
+    statusBar.command = 'codeep.openChat';
     switch (s.connection) {
       case 'connecting':
         statusBar.text = '$(loading~spin) Codeep';
@@ -92,8 +100,9 @@ export function activate(context: vscode.ExtensionContext) {
       case 'connected':
         statusBar.text = s.model ? `$(circuit-board) Codeep · ${s.model}` : '$(circuit-board) Codeep';
         statusBar.tooltip = new vscode.MarkdownString(
-          `Codeep CLI · **connected**${s.model ? ` · model \`${s.model}\`` : ''}\n\nClick to open chat.`,
+          `Codeep CLI · **connected**${s.model ? ` · model \`${s.model}\`` : ''}\n\nClick to change model.`,
         );
+        statusBar.command = 'codeep.selectModel';
         statusBar.backgroundColor = undefined;
         break;
       case 'reconnecting':
@@ -120,6 +129,111 @@ export function activate(context: vscode.ExtensionContext) {
 
   renderStatusBar(chatPanel.getStatusState());
   context.subscriptions.push(chatPanel.onStatusChange(renderStatusBar));
+
+  // Command: pick provider + model from a quick-pick (wired to the status bar
+  // when connected). Two-step: provider → model, with a free-text fallback for
+  // providers whose model list is dynamic (OpenRouter, Ollama, custom endpoints)
+  // or when an older CLI doesn't report models.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeep.selectModel', async () => {
+      let providers;
+      try {
+        providers = await chatPanel.getProviders();
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Codeep: could not reach the CLI to load providers — ${err?.message || err}`);
+        return;
+      }
+      if (!providers || providers.length === 0) {
+        if (!chatPanel.isProviderListAvailable()) {
+          const upgrade = 'Update CLI';
+          const choice = await vscode.window.showWarningMessage(
+            'Codeep: your installed CLI is too old to report providers/models. Run "npm install -g codeep@latest" and reload the window.',
+            upgrade,
+          );
+          if (choice === upgrade) {
+            const term = vscode.window.createTerminal('Codeep CLI update');
+            term.sendText('npm install -g codeep@latest');
+            term.show();
+          }
+        } else {
+          vscode.window.showWarningMessage('Codeep: no providers reported by the CLI.');
+        }
+        return;
+      }
+
+      const provPick = await vscode.window.showQuickPick(
+        providers.map((p) => ({ label: p.groupLabel || p.name, description: p.id, detail: p.hint, entry: p })),
+        { placeHolder: 'Select a provider', matchOnDetail: true },
+      );
+      if (!provPick) return;
+      const provider = provPick.entry;
+
+      const models = provider.models ?? [];
+      let modelId: string | undefined;
+      if (provider.dynamicModels || models.length === 0) {
+        modelId = await vscode.window.showInputBox({
+          prompt: `Model id for ${provider.groupLabel || provider.name}`,
+          placeHolder: provider.defaultModel || 'e.g. qwen3-coder-30b',
+          value: provider.defaultModel || '',
+          ignoreFocusOut: true,
+          validateInput: (v) => (v.trim() ? null : 'Enter a model id'),
+        });
+      } else {
+        const CUSTOM = '__custom__';
+        const modelPick = await vscode.window.showQuickPick(
+          [
+            ...models.map((m) => ({
+              label: m.name || m.id,
+              description: m.id === provider.defaultModel ? 'default' : '',
+              detail: m.id,
+              modelId: m.id,
+            })),
+            { label: '$(edit) Enter a custom model id…', description: '', detail: '', modelId: CUSTOM },
+          ],
+          { placeHolder: `Select a model for ${provider.groupLabel || provider.name}`, matchOnDetail: true },
+        );
+        if (!modelPick) return;
+        modelId =
+          modelPick.modelId === CUSTOM
+            ? await vscode.window.showInputBox({
+                prompt: 'Model id',
+                value: provider.defaultModel || '',
+                ignoreFocusOut: true,
+                validateInput: (v) => (v.trim() ? null : 'Enter a model id'),
+              })
+            : modelPick.modelId;
+      }
+      if (!modelId || !modelId.trim()) return;
+
+      try {
+        await chatPanel.setModel(provider.id, modelId.trim());
+        vscode.window.showInformationMessage(
+          `Codeep: switched to ${modelId.trim()} (${provider.groupLabel || provider.name}).`,
+        );
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Codeep: failed to switch model — ${err?.message || err}`);
+      }
+    }),
+  );
+
+  // Lightbulb (Code Action) integration — Explain / Improve / Add tests /
+  // Add doc comment on a selection, plus a "Fix this problem" quick-fix on
+  // diagnostics. Routes the templated prompt through the chat so the full
+  // agent (file edits via diff preview, tools) is available.
+  registerCodeActions(context, (text: string) => {
+    chatPanel.sendToChat(text);
+    vscode.commands.executeCommand('workbench.view.extension.codeep');
+  });
+
+  // "Generate Commit Message" — sparkle button in the Source Control title.
+  registerGenerateCommitMessage(context, (diff: string) => chatPanel.generateCommitMessage(diff));
+
+  // Native "Sessions" tree view in the Codeep sidebar (browse / load / delete).
+  registerSessionsTree(context, chatPanel);
+
+  // `@codeep` participant in the native Chat view + `codeep_skills` LM tool.
+  registerChatParticipant(context);
+  registerCodeepTools(context);
 
   // Command: send selected code to chat
   context.subscriptions.push(

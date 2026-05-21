@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "2.1.1",
+  "version": "2.3.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -14,7 +14,7 @@
     "url": "https://github.com/VladoIvankovic/Codeep-vscode"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "AI",
@@ -33,6 +33,12 @@
     "onView:codeep.chat"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Codeep runs a local CLI agent that can read/edit files and run commands. In untrusted workspaces, review each permission prompt carefully before allowing an action."
+    }
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -49,6 +55,10 @@
           "type": "webview",
           "id": "codeep.chat",
           "name": "Chat"
+        },
+        {
+          "id": "codeep.sessions",
+          "name": "Sessions"
         }
       ]
     },
@@ -67,11 +77,16 @@
       },
       {
         "command": "codeep.newSession",
-        "title": "Codeep: New Session"
+        "title": "Codeep: New Session",
+        "icon": "$(add)"
       },
       {
         "command": "codeep.setApiKey",
         "title": "Codeep: Set API Key"
+      },
+      {
+        "command": "codeep.selectModel",
+        "title": "Codeep: Select Provider & Model"
       },
       {
         "command": "codeep.inlineChat",
@@ -104,9 +119,50 @@
       {
         "command": "codeep.skillsOpenFolder",
         "title": "Codeep: Open Skills Folder"
+      },
+      {
+        "command": "codeep.generateCommitMessage",
+        "title": "Codeep: Generate Commit Message",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "codeep.tree.refreshSessions",
+        "title": "Codeep: Refresh Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codeep.tree.deleteSession",
+        "title": "Codeep: Delete Session",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
+      "scm/title": [
+        {
+          "command": "codeep.generateCommitMessage",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "codeep.newSession",
+          "when": "view == codeep.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeep.tree.refreshSessions",
+          "when": "view == codeep.sessions",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codeep.tree.deleteSession",
+          "when": "view == codeep.sessions && viewItem == codeepSession",
+          "group": "inline"
+        }
+      ],
       "editor/context": [
         {
           "command": "codeep.inlineChat",
@@ -163,12 +219,17 @@
         "codeep.provider": {
           "type": "string",
           "default": "",
-          "description": "Override AI provider (leave empty to use CLI default)"
+          "markdownDescription": "Pin the AI provider for this window (e.g. `openai`, `anthropic`, `openrouter`, `custom`). Leave empty to use the CLI's own setting. Applied on every connect, so it overrides changes made via the chat. Run **Codeep: Select Provider & Model** to switch interactively instead."
         },
         "codeep.model": {
           "type": "string",
           "default": "",
-          "description": "Override AI model (leave empty to use CLI default)"
+          "markdownDescription": "Pin the model id for this window (e.g. `gpt-4o`, `qwen3-coder-30b`). Leave empty to use the CLI's own setting / the provider default."
+        },
+        "codeep.baseUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL of an OpenAI-compatible endpoint (vLLM, LiteLLM, LM Studio, text-generation-webui), e.g. `http://localhost:8000/v1`. Set `#codeep.provider#` to `custom` (no API key needed) or `openai` (passed as `OPENAI_BASE_URL`), and `#codeep.model#` to a model your server serves. Leave empty for hosted providers."
         },
         "codeep.requestTimeoutMinutes": {
           "type": "number",
@@ -178,7 +239,104 @@
           "description": "Idle timeout in minutes for an in-flight prompt. The timer resets on every signal from the CLI (chunks, tool calls, thoughts) — so this only fires when the agent is genuinely wedged. Bump to 15+ for slow reasoning models."
         }
       }
-    }
+    },
+    "chatParticipants": [
+      {
+        "id": "codeep.assistant",
+        "name": "codeep",
+        "fullName": "Codeep",
+        "description": "Ask Codeep about your code",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "explain",
+            "description": "Explain the selected or referenced code"
+          },
+          {
+            "name": "review",
+            "description": "Review the code for bugs and improvements"
+          }
+        ]
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "codeep_skills",
+        "displayName": "Codeep Skills",
+        "modelDescription": "Returns the Codeep skill bundles defined in this workspace (.codeep/skills/<name>/SKILL.md) — project-specific workflows like deploy steps, review checklists, or hotfix flows. Use this when the user's request might match a defined workflow, to follow the project's own conventions instead of guessing.",
+        "userDescription": "Codeep skill bundles defined in this workspace",
+        "toolReferenceName": "codeepSkills",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "tags": ["codeep", "workflow"]
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": [
+          "**/.codeep/mcp_servers.json",
+          "mcp_servers.json"
+        ],
+        "url": "./media/schema/mcp_servers.schema.json"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "codeep.sessions",
+        "contents": "No saved Codeep sessions yet.\nStart a conversation and it'll show up here.\n[Open Codeep Chat](command:codeep.openChat)"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "codeep.gettingStarted",
+        "title": "Get Started with Codeep",
+        "description": "Connect the CLI, open the chat, and start coding with AI — including self-hosted models.",
+        "steps": [
+          {
+            "id": "codeep.walkthrough.cli",
+            "title": "Install the Codeep CLI",
+            "description": "The extension drives the local `codeep` CLI.\n[Open a terminal](command:workbench.action.terminal.new)",
+            "media": {
+              "markdown": "media/walkthrough/cli.md"
+            }
+          },
+          {
+            "id": "codeep.walkthrough.chat",
+            "title": "Open the chat",
+            "description": "Open the Codeep view and say hello.\n[Open Codeep Chat](command:codeep.openChat)",
+            "media": {
+              "markdown": "media/walkthrough/chat.md"
+            },
+            "completionEvents": [
+              "onCommand:codeep.openChat"
+            ]
+          },
+          {
+            "id": "codeep.walkthrough.codeActions",
+            "title": "Work from the editor",
+            "description": "Select code, then use the lightbulb or send it to chat.",
+            "media": {
+              "markdown": "media/walkthrough/code-actions.md"
+            },
+            "completionEvents": [
+              "onCommand:codeep.sendSelection",
+              "onCommand:codeep.codeAction"
+            ]
+          },
+          {
+            "id": "codeep.walkthrough.model",
+            "title": "Choose your model",
+            "description": "Switch providers/models — or point Codeep at your own endpoint.\n[Select Provider & Model](command:codeep.selectModel)",
+            "media": {
+              "markdown": "media/walkthrough/model.md"
+            },
+            "completionEvents": [
+              "onCommand:codeep.selectModel"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "build:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
@@ -191,9 +349,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "~1.95.0",
+    "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.3.0",
-    "@vscode/vsce": "^2.24.0"
+    "typescript": "^5.3.0"
   }
 }

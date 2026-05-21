@@ -10,6 +10,11 @@ export interface ProviderEntry {
   hint: string;
   requiresKey: boolean;
   subscribeUrl?: string;
+  // Added in CLI 2.1.2 — older CLIs omit these; the model picker falls back
+  // to a free-text input when `models` is missing/empty or `dynamicModels`.
+  models?: { id: string; name: string }[];
+  defaultModel?: string;
+  dynamicModels?: boolean;
 }
 
 // Connection-level status surfaced to the status bar item. Webview gets a
@@ -64,6 +69,10 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private currentStatus: ChatStatusState = { connection: 'connecting' };
   private statusEmitter = new vscode.EventEmitter<ChatStatusState>();
   public readonly onStatusChange = this.statusEmitter.event;
+  // Fires when the saved-session list may have changed (new / load / delete),
+  // so the Sessions tree view can refresh itself.
+  private sessionsEmitter = new vscode.EventEmitter<void>();
+  public readonly onSessionsChanged = this.sessionsEmitter.event;
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -271,6 +280,53 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Switch the active provider + model via ACP. The CLI server applies it to
+   * the shared config and echoes a config_option_update, which updates the
+   * status bar model automatically (see the 'configOptions' handler).
+   * setConfigOption auto-starts the client, so this works from a cold status-bar click.
+   */
+  async setModel(providerId: string, modelId: string): Promise<void> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+    await this.client.setConfigOption('model', `${providerId}/${modelId}`);
+  }
+
+  /**
+   * Generate a Conventional Commits message from a git diff. Routes through
+   * the session (visible in chat, like inline edit) and returns the cleaned
+   * message text. Caller writes it into the SCM input box.
+   */
+  async generateCommitMessage(diff: string): Promise<string | null> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+
+    const prompt = [
+      'Write a git commit message for the staged changes below.',
+      'Format: Conventional Commits — a `type(scope): subject` summary line',
+      '(type one of: feat, fix, docs, refactor, test, chore, perf, build, ci),',
+      'imperative mood, ~72 chars max, no trailing period. For non-trivial',
+      'changes add a blank line then 1–4 concise bullet points (`- `).',
+      'Output ONLY the commit message — no code fences, no preamble, no quotes.',
+      '',
+      'Diff:',
+      diff,
+    ].join('\n');
+
+    this.skipWelcome = false;
+    this.view?.webview.postMessage({ type: 'userMessage', text: '[generate commit message]' });
+    this.view?.webview.postMessage({ type: 'thinking' });
+
+    const raw = await this.client.sendAndCollect(prompt);
+    // Strip accidental wrapping code fences / quotes the model might add.
+    const cleaned = raw
+      .replace(/^\s*```[a-zA-Z0-9_+-]*\n?/i, '')
+      .replace(/```\s*$/i, '')
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .trim();
+    return cleaned || null;
+  }
+
+  /**
    * Inline edit (Cmd+Shift+I) — ask the agent to rewrite a chunk of code
    * according to natural-language instructions. Returns the new code (just
    * the inside of the first ``` block) or null if the agent refused or
@@ -322,10 +378,40 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       await this.client?.newSession();
       this.view?.webview.postMessage({ type: 'clearChat' });
       this.view?.webview.postMessage({ type: 'status', text: 'New session started' });
+      this.sessionsEmitter.fire();
     } catch (err: any) {
       this.output.appendLine(`[ERROR] newSession: ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: err.message });
     }
+  }
+
+  // ── Sessions tree view support ──────────────────────────────────────────────
+  // Public, tree-friendly wrappers over the same ACP session ops the webview
+  // uses. They keep the webview in sync (it listens for 'sessions'/'clearChat')
+  // and fire onSessionsChanged so the tree refreshes.
+
+  /** List saved sessions for the tree. Returns [] on any failure. */
+  async getSessions(): Promise<{ sessionId: string; title?: string; updatedAt?: string }[]> {
+    try {
+      if (!this.client) this.initClient();
+      return await this.client!.listSessions();
+    } catch {
+      return [];
+    }
+  }
+
+  /** Load a session into the chat and reveal the chat view. */
+  async openSession(sessionId: string): Promise<void> {
+    await this.handleLoadSession(sessionId);
+    await vscode.commands.executeCommand('workbench.view.extension.codeep');
+    this.view?.webview.postMessage({ type: 'status', text: 'Session loaded' });
+    this.sessionsEmitter.fire();
+  }
+
+  /** Delete a session and refresh the webview list + tree. */
+  async deleteSessionById(sessionId: string): Promise<void> {
+    await this.handleDeleteSession(sessionId);
+    this.sessionsEmitter.fire();
   }
 
   private clearPermissionHandlers(): void {
@@ -338,8 +424,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     const cliPath = config.get<string>('cliPath') || 'codeep';
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require('os').homedir();
     const timeoutMin = Math.max(1, Math.min(60, config.get<number>('requestTimeoutMinutes') ?? 5));
+    // Optional pins — empty means "use the CLI's own config".
+    const overrides = {
+      provider: config.get<string>('provider')?.trim() || undefined,
+      model: config.get<string>('model')?.trim() || undefined,
+      baseUrl: config.get<string>('baseUrl')?.trim() || undefined,
+    };
 
-    this.client = new AcpClient(cliPath, workspacePath, timeoutMin * 60_000);
+    this.client = new AcpClient(cliPath, workspacePath, timeoutMin * 60_000, overrides);
 
     this.client.on('chunk', (chunk: string) => {
       if (this.skipWelcome) return;

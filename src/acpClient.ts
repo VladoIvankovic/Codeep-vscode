@@ -83,6 +83,10 @@ export class AcpClient extends EventEmitter {
     private cliPath: string,
     private workspacePath: string,
     private idleTimeoutMs: number = 300_000,
+    // Optional pins from VS Code settings (codeep.provider/model/baseUrl).
+    // Empty fields mean "use the CLI's own config". Applied on every connect
+    // so the editor's settings stay authoritative across reconnects.
+    private overrides: { provider?: string; model?: string; baseUrl?: string } = {},
   ) {
     super();
   }
@@ -99,10 +103,14 @@ export class AcpClient extends EventEmitter {
 
     // On Windows, npm global binaries are .cmd wrappers — use shell:true to resolve them
     const isWindows = process.platform === 'win32';
+    // Pass codeep.baseUrl through as OPENAI_BASE_URL so the `openai` provider
+    // picks it up (the CLI honors that env var). The `custom` provider is
+    // configured separately via the customBaseUrl config option below.
+    const baseUrl = this.overrides.baseUrl?.trim();
     this.process = spawn(this.cliPath, ['acp'], {
       cwd: this.workspacePath,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: baseUrl ? { ...process.env, OPENAI_BASE_URL: baseUrl } : { ...process.env },
       shell: isWindows,
     });
 
@@ -170,10 +178,35 @@ export class AcpClient extends EventEmitter {
       await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
     }
 
+    // Apply VS Code setting pins (codeep.provider/model/baseUrl) so they're
+    // authoritative on every (re)connect. Order matters: provider first (it
+    // resets the model to the provider default), then model overrides that,
+    // then the custom base URL. Best-effort — a bad value shouldn't abort the
+    // whole connect. The server echoes config_option_update notifications which
+    // refresh the UI/status bar.
+    await this.applyOverrides();
+
     // Emit config options so UI can build settings panel
     if (session?.configOptions) {
       this.emit('configOptions', session.configOptions, session.modes);
     }
+  }
+
+  /** Push codeep.provider/model/baseUrl pins to the server, if set. */
+  private async applyOverrides(): Promise<void> {
+    if (!this.sessionId) return;
+    const apply = async (configId: string, value?: string) => {
+      const v = value?.trim();
+      if (!v) return;
+      try {
+        await this.request('session/set_config_option', { sessionId: this.sessionId, configId, value: v });
+      } catch {
+        /* older CLI without this option, or invalid value — ignore */
+      }
+    };
+    await apply('provider', this.overrides.provider);
+    await apply('model', this.overrides.model);
+    await apply('customBaseUrl', this.overrides.baseUrl);
   }
 
   async send(message: string): Promise<void> {
@@ -274,6 +307,9 @@ export class AcpClient extends EventEmitter {
   }
 
   async setConfigOption(configId: string, value: string): Promise<void> {
+    // Auto-start so callers like the status-bar model picker work even
+    // before the chat view has been opened (mirrors listProviders/deleteSession).
+    if (!this.process) await this.start();
     if (!this.sessionId) return;
     const result = await this.request('session/set_config_option', { sessionId: this.sessionId, configId, value });
     if (result?.configOptions) {
