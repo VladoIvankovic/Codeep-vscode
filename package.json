@@ -268,7 +268,10 @@
         "toolReferenceName": "codeepSkills",
         "canBeReferencedInPrompt": true,
         "icon": "$(book)",
-        "tags": ["codeep", "workflow"]
+        "tags": [
+          "codeep",
+          "workflow"
+        ]
       }
     ],
     "jsonValidation": [
@@ -343,6 +346,7 @@
     "build:webview": "esbuild src/webview/main.ts --bundle --outfile=media/chat.js --format=iife --target=es2020 --platform=browser",
     "build": "npm run build:extension && npm run build:webview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
+    "test": "vitest run",
     "watch": "npm run build -- --watch",
     "package": "npm run build && vsce package",
     "publish": "vsce publish"
@@ -352,6 +356,7 @@
     "@types/vscode": "~1.95.0",
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.7"
   }
 }

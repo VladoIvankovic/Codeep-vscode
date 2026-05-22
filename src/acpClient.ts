@@ -436,6 +436,17 @@ export class AcpClient extends EventEmitter {
     }
   }
 
+  /**
+   * Test seam: feed raw stdout bytes through the same buffer + framing path the
+   * live `proc.stdout.on('data')` handler uses. Lets unit tests exercise the
+   * JSON-RPC framing/dispatch without spawning a process. Harmless in prod
+   * (nothing calls it outside the data handler / tests).
+   */
+  ingest(chunk: string): void {
+    this.buffer += chunk;
+    this.flush();
+  }
+
   private flush(): void {
     const lines = this.buffer.split('\n');
     this.buffer = lines.pop() ?? '';
