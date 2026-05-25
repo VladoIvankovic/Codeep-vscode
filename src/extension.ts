@@ -8,6 +8,7 @@ import { registerGenerateCommitMessage } from './commitMessage';
 import { registerSessionsTree } from './sessionsTree';
 import { registerChatParticipant } from './chatParticipant';
 import { registerCodeepTools } from './codeepTools';
+import { registerProfileCommands } from './profile';
 
 export function activate(context: vscode.ExtensionContext) {
   // Register before ChatPanel — chatPanel.ts calls showProposedChange()
@@ -234,6 +235,10 @@ export function activate(context: vscode.ExtensionContext) {
   // `@codeep` participant in the native Chat view + `codeep_skills` LM tool.
   registerChatParticipant(context);
   registerCodeepTools(context);
+
+  // Profile commands: edit ~/.codeep/profile.md (global) and the project one,
+  // plus the auto-learn toggle. The CLI/ACP agent reads these files on every run.
+  registerProfileCommands(context, chatPanel);
 
   // Command: send selected code to chat
   context.subscriptions.push(

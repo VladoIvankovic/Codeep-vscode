@@ -292,6 +292,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Toggle profile auto-learn on the running CLI. Mirrors setModel: auto-starts
+   * the client and pushes the config option live so it takes effect this session.
+   */
+  async setAutoLearn(enabled: boolean): Promise<void> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+    await this.client.setConfigOption('autoLearnProfile', String(enabled));
+  }
+
+  /**
    * Generate a Conventional Commits message from a git diff. Routes through
    * the session (visible in chat, like inline edit) and returns the cleaned
    * message text. Caller writes it into the SCM input box.
@@ -424,11 +434,12 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     const cliPath = config.get<string>('cliPath') || 'codeep';
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require('os').homedir();
     const timeoutMin = Math.max(1, Math.min(60, config.get<number>('requestTimeoutMinutes') ?? 5));
-    // Optional pins — empty means "use the CLI's own config".
+    // Optional pins — empty/undefined means "use the CLI's own config".
     const overrides = {
       provider: config.get<string>('provider')?.trim() || undefined,
       model: config.get<string>('model')?.trim() || undefined,
       baseUrl: config.get<string>('baseUrl')?.trim() || undefined,
+      autoLearnProfile: config.get<boolean>('autoLearnProfile'),
     };
 
     this.client = new AcpClient(cliPath, workspacePath, timeoutMin * 60_000, overrides);

@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -134,6 +134,18 @@
         "command": "codeep.tree.deleteSession",
         "title": "Codeep: Delete Session",
         "icon": "$(trash)"
+      },
+      {
+        "command": "codeep.editProfile",
+        "title": "Codeep: Edit Profile"
+      },
+      {
+        "command": "codeep.editProjectProfile",
+        "title": "Codeep: Edit Project Profile"
+      },
+      {
+        "command": "codeep.toggleAutoLearn",
+        "title": "Codeep: Toggle Profile Auto-Learn"
       }
     ],
     "menus": {
@@ -237,6 +249,10 @@
           "minimum": 1,
           "maximum": 60,
           "description": "Idle timeout in minutes for an in-flight prompt. The timer resets on every signal from the CLI (chunks, tool calls, thoughts) — so this only fires when the agent is genuinely wedged. Bump to 15+ for slow reasoning models."
+        },
+        "codeep.autoLearnProfile": {
+          "type": "boolean",
+          "markdownDescription": "Let Codeep quietly learn your durable preferences from sessions and merge them into `~/.codeep/profile.learned.md` (global) and `.codeep/profile.learned.md` (project), which it injects into the agent's context. Leave unset to use the CLI's own setting. Review with the CLI `/me`, clear with `/me forget`. Toggle via **Codeep: Toggle Profile Auto-Learn**."
         }
       }
     },
@@ -335,6 +351,17 @@
             },
             "completionEvents": [
               "onCommand:codeep.selectModel"
+            ]
+          },
+          {
+            "id": "codeep.walkthrough.profile",
+            "title": "Personalize Codeep",
+            "description": "Tell Codeep how you like to work — reply language, style, stack. It adapts on every project.\n[Edit Profile](command:codeep.editProfile)",
+            "media": {
+              "markdown": "media/walkthrough/profile.md"
+            },
+            "completionEvents": [
+              "onCommand:codeep.editProfile"
             ]
           }
         ]

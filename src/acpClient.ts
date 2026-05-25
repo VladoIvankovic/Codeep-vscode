@@ -83,10 +83,11 @@ export class AcpClient extends EventEmitter {
     private cliPath: string,
     private workspacePath: string,
     private idleTimeoutMs: number = 300_000,
-    // Optional pins from VS Code settings (codeep.provider/model/baseUrl).
-    // Empty fields mean "use the CLI's own config". Applied on every connect
-    // so the editor's settings stay authoritative across reconnects.
-    private overrides: { provider?: string; model?: string; baseUrl?: string } = {},
+    // Optional pins from VS Code settings (codeep.provider/model/baseUrl/
+    // autoLearnProfile). Empty/undefined fields mean "use the CLI's own
+    // config". Applied on every connect so the editor's settings stay
+    // authoritative across reconnects.
+    private overrides: { provider?: string; model?: string; baseUrl?: string; autoLearnProfile?: boolean } = {},
   ) {
     super();
   }
@@ -207,6 +208,11 @@ export class AcpClient extends EventEmitter {
     await apply('provider', this.overrides.provider);
     await apply('model', this.overrides.model);
     await apply('customBaseUrl', this.overrides.baseUrl);
+    // Push the profile auto-learn pin only when the user expressed a VS Code
+    // preference (undefined = leave the CLI's own setting untouched).
+    if (this.overrides.autoLearnProfile !== undefined) {
+      await apply('autoLearnProfile', String(this.overrides.autoLearnProfile));
+    }
   }
 
   async send(message: string): Promise<void> {

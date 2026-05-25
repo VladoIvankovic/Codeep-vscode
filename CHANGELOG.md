@@ -4,6 +4,24 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-05-25
+
+> Codeep adapts to you: edit your user profile from the editor, toggle opt-in auto-learn, and a "Personalize Codeep" walkthrough step. Pairs with CLI 2.2.0's `/me` profile.
+
+### Added
+
+- **Codeep: Edit Profile** / **Codeep: Edit Project Profile.** Open (and scaffold
+  on first use) `~/.codeep/profile.md` and the workspace `.codeep/profile.md` —
+  a short description of how you like to work (reply language, style, stack,
+  "always / never"). The CLI/ACP agent injects these into its context on every
+  run, so `@codeep` and the chat adapt to you.
+- **Codeep: Toggle Profile Auto-Learn** + the `codeep.autoLearnProfile` setting.
+  Lets Codeep quietly learn durable preferences from sessions into a separate
+  `profile.learned.md`. Pushed live to the running CLI and applied on every
+  connect. Off until you turn it on; review with the CLI `/me`, clear with
+  `/me forget`.
+- **"Personalize Codeep" walkthrough step** in the Get Started walkthrough.
+
 ## [2.3.0] — 2026-05-21
 
 > Deeper editor integration: a `@codeep` participant in the native Chat view, a `#codeepSkills` agent tool, generate commit messages from the Source Control panel, a native Sessions tree, JSON validation for MCP config, and Workspace Trust support.

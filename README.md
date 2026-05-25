@@ -52,6 +52,15 @@ The extension connects to the Codeep CLI automatically on startup. Once connecte
 | Codeep: Attach Active File to Chat | `Cmd+Shift+A` | Prepend `@<path>` of the active file to the chat input (no auto-send) |
 | Codeep: Review Current File | — | AI review of the active file |
 | Codeep: New Session | — | Start a new conversation |
+| Codeep: Edit Profile | — | Open/create `~/.codeep/profile.md` — your global "about me" profile |
+| Codeep: Edit Project Profile | — | Open/create `.codeep/profile.md` for this workspace |
+| Codeep: Toggle Profile Auto-Learn | — | Let Codeep learn your durable preferences from sessions (opt-in) |
+
+### Your profile
+
+**Codeep: Edit Profile** opens a small Markdown file describing how you like to work — reply language, response style, default stack, "always / never" rules. Codeep injects it into the agent's context on every run, so it adapts to you across the terminal, VS Code, and Zed. **Edit Project Profile** does the same per-repo (`.codeep/profile.md`).
+
+**Codeep: Toggle Profile Auto-Learn** (setting `codeep.autoLearnProfile`) lets Codeep quietly pick up durable preferences from your sessions into a separate `profile.learned.md`. Off by default; review with the CLI `/me`, clear with `/me forget`.
 
 ### Sessions
 
