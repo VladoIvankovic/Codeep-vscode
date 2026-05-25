@@ -4,6 +4,15 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] — 2026-05-25
+
+> Push your profile to the dashboard from the editor.
+
+### Added
+
+- **Codeep: Sync Profile to Dashboard** — runs `/me sync` through the CLI to push
+  your `~/.codeep/profile.md` to codeep.dev (and pull it on a fresh machine).
+
 ## [2.4.0] — 2026-05-25
 
 > Codeep adapts to you: edit your user profile from the editor, toggle opt-in auto-learn, and a "Personalize Codeep" walkthrough step. Pairs with CLI 2.2.0's `/me` profile.

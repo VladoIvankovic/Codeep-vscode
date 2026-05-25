@@ -91,5 +91,17 @@ export function registerProfileCommands(context: vscode.ExtensionContext, chatPa
           : 'Codeep: profile auto-learn OFF.',
       );
     }),
+
+    vscode.commands.registerCommand('codeep.syncProfile', async () => {
+      try {
+        const result = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Codeep: syncing profile to dashboard…' },
+          () => chatPanel.syncProfile(),
+        );
+        vscode.window.showInformationMessage(`Codeep: ${result || 'profile synced.'}`);
+      } catch (err) {
+        vscode.window.showWarningMessage(`Codeep: profile sync failed — ${(err as Error).message}. Make sure the CLI is linked (run \`codeep account\`).`);
+      }
+    }),
   );
 }

@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -146,6 +146,10 @@
       {
         "command": "codeep.toggleAutoLearn",
         "title": "Codeep: Toggle Profile Auto-Learn"
+      },
+      {
+        "command": "codeep.syncProfile",
+        "title": "Codeep: Sync Profile to Dashboard"
       }
     ],
     "menus": {

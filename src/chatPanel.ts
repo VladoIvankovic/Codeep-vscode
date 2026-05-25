@@ -302,6 +302,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Push the user profile to the codeep.dev dashboard via the CLI's `/me sync`
+   * (handled by the ACP command layer). Returns the CLI's response text.
+   */
+  async syncProfile(): Promise<string> {
+    this.initClient();
+    if (!this.client) throw new Error('CLI not running');
+    return (await this.client.sendAndCollect('/me sync')).trim();
+  }
+
+  /**
    * Generate a Conventional Commits message from a git diff. Routes through
    * the session (visible in chat, like inline edit) and returns the cleaned
    * message text. Caller writes it into the SCM input box.
