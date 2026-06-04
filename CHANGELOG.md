@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [2.5.0] — 2026-06-04
 
-> Blockquotes render in chat again, and file edits containing `$` ($&, ${…}, $$) apply literally instead of corrupting. Also hardens link rendering against an attribute-injection edge case.
+> Blockquotes render in chat again, and file edits containing a `$` now apply literally instead of corrupting. Also hardens link rendering against an attribute-injection edge case.
 
 ### Fixed
 
