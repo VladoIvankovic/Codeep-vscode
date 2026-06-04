@@ -189,6 +189,8 @@ export function synthesizeEditedContent(
   if (!currentContent.includes(oldString)) return null;
   // The agent guarantees a single match (see edit_file in
   // utils/toolExecution.ts), so a single replace mirrors what'll be
-  // written.
-  return currentContent.replace(oldString, newString);
+  // written. Use a function replacer so the new text is inserted literally —
+  // a plain string would let `$&`, `$1`, `$$` etc. (common in shell vars,
+  // template literals, regex) corrupt the result.
+  return currentContent.replace(oldString, () => newString);
 }

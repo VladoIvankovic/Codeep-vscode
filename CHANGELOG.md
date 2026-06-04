@@ -4,6 +4,23 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — 2026-06-04
+
+> Blockquotes render in chat again, and file edits containing `$` ($&, ${…}, $$) apply literally instead of corrupting. Also hardens link rendering against an attribute-injection edge case.
+
+### Fixed
+
+- **Blockquotes render again.** The chat markdown renderer escaped `>` to `&gt;`
+  before checking for blockquote lines, so the blockquote branch was dead code
+  and `> quote` showed as plain text. Fixed.
+- **Edits containing `$` apply literally.** Synthesizing the "after" text for an
+  `edit_file` diff used `String.replace(old, new)`, which interprets `$&`, `$$`,
+  `$1` in the replacement — corrupting any edit whose new text contained `$`
+  (template literals, shell vars, regex). Now inserted verbatim.
+- **Link rendering hardened.** The markdown escaper didn't escape `"`, so a
+  model-supplied link URL containing a quote could break out of the `href`
+  attribute. Quotes are now entity-encoded.
+
 ## [2.4.1] — 2026-05-25
 
 > Push your profile to the dashboard from the editor.

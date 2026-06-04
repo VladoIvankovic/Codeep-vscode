@@ -3,7 +3,16 @@
 // dep so we don't ship marked/markdown-it (~15 KB) for our limited needs.
 
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Escape the full set including quotes: link URLs flow into an href="..."
+  // attribute (renderMarkdown runs this first, then the link regex reads the
+  // already-escaped text), so an unescaped " in a model-supplied URL would
+  // break out of the attribute and inject markup.
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function inline(text: string): string {
@@ -91,9 +100,12 @@ export function renderMarkdown(text: string): string {
       continue;
     }
 
-    if (/^>\s?/.test(line)) {
+    // escapeHtml has already run by here, so a blockquote marker arrives as
+    // `&gt;`, not `>` — match the escaped form (matching `>` made this branch
+    // dead code, so blockquotes never rendered).
+    if (/^&gt;\s?/.test(line)) {
       if (!inBq) { closeLists(); out.push('<blockquote>'); inBq = true; }
-      out.push(inline(line.replace(/^>\s?/, '')) + '<br>');
+      out.push(inline(line.replace(/^&gt;\s?/, '')) + '<br>');
       continue;
     }
     if (inBq) { out.push('</blockquote>'); inBq = false; }
