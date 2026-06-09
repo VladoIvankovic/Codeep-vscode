@@ -99,3 +99,24 @@ describe('dispatch', () => {
     expect(events).toHaveLength(0);
   });
 });
+
+describe('manual-mode fail-closed gate', () => {
+  it('starts un-armed (so send() would refuse until manual mode is confirmed)', () => {
+    expect(client.isModeGuarded).toBe(false);
+  });
+
+  it('arms when the server confirms a session mode via current_mode_update', () => {
+    capture('modeChanged');
+    expect(client.isModeGuarded).toBe(false);
+    client.ingest(notification({ sessionUpdate: 'current_mode_update', currentModeId: 'manual' }));
+    expect(client.isModeGuarded).toBe(true);
+    expect(events).toEqual([{ type: 'modeChanged', payload: 'manual' }]);
+  });
+
+  it('disarms on stop() so a reconnect must re-arm (no stale armed state carries over)', () => {
+    client.ingest(notification({ sessionUpdate: 'current_mode_update', currentModeId: 'manual' }));
+    expect(client.isModeGuarded).toBe(true);
+    client.stop();
+    expect(client.isModeGuarded).toBe(false);
+  });
+});

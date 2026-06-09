@@ -4,6 +4,24 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.5.1] — 2026-06-09
+
+> Security: the manual-mode permission gate now fails closed. If the extension can't put the agent into manual mode on connect, it refuses to send prompts (with a clear message) instead of letting the agent run tools unguarded.
+
+### Security
+
+- **Manual-mode gate fails closed.** On connect the extension asks the CLI to
+  enter manual mode (so dangerous tools require approval). If that request fails
+  — e.g. a transient error or a CLI too old to support it — the session would
+  otherwise stay in unguarded `auto` mode. The extension now retries once and,
+  if it still can't arm the gate, refuses to send prompts and surfaces an
+  actionable error ("update the Codeep CLI and reload"), rather than silently
+  running tools without confirmation. Pairs with the CLI 2.7.0 ACP hardening.
+
+### Changed
+
+- Pin the `codeep-review` CI workflow to the immutable `codeep-action@v1.0.2`.
+
 ## [2.5.0] — 2026-06-04
 
 > Blockquotes render in chat again, and file edits containing a `$` now apply literally instead of corrupting. Also hardens link rendering against an attribute-injection edge case.

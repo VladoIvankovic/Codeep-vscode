@@ -63,6 +63,12 @@ export class AcpClient extends EventEmitter {
   private sessionId: string | null = null;
   private startFresh = false;
   private suppressNextResponseEnd = false;
+  // Fail-closed permission gate: true once the server has confirmed a session
+  // mode (we set 'manual' on connect, or the user switched mode). If arming
+  // manual mode FAILS on connect, the CLI session stays in its default 'auto'
+  // (no confirmation prompts), so we refuse to send prompts rather than let
+  // dangerous tools auto-run unguarded. See armManualMode() + send().
+  private modeGuardArmed = false;
   // Idle-watchdog state: a long-running session/prompt is allowed to take as long
   // as it likes, as long as the CLI keeps emitting *some* signal (chunk, tool
   // call, thought). If nothing comes through for `idleTimeoutMs`, we assume the
@@ -139,6 +145,7 @@ export class AcpClient extends EventEmitter {
       if (this.process === proc) {
         this.process = null;
         this.sessionId = null;
+        this.modeGuardArmed = false; // a new session must re-arm; never carry a stale armed state
         this.rejectAllPending(new Error('CLI process exited'));
         this.emit('disconnected', code);
         if (!this.intentionalShutdown) this.scheduleReconnect();
@@ -174,10 +181,9 @@ export class AcpClient extends EventEmitter {
     this.startFresh = false;
     this.sessionId = session?.sessionId ?? null;
 
-    // Enable manual mode so server requests permission for dangerous operations
-    if (this.sessionId) {
-      await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
-    }
+    // Arm manual mode so the server asks permission for dangerous operations.
+    // Fails closed (see armManualMode): if it can't be set, send() refuses.
+    await this.armManualMode();
 
     // Apply VS Code setting pins (codeep.provider/model/baseUrl) so they're
     // authoritative on every (re)connect. Order matters: provider first (it
@@ -215,10 +221,48 @@ export class AcpClient extends EventEmitter {
     }
   }
 
+  /**
+   * Set the session to manual mode (server asks permission for dangerous tools).
+   * Retries once on a transient failure, then FAILS CLOSED: marks the gate
+   * un-armed and emits 'modeGuardFailed' so the UI can warn and send() refuses
+   * to run prompts (the CLI session would otherwise stay in unguarded 'auto').
+   */
+  private async armManualMode(): Promise<void> {
+    if (!this.sessionId) { this.modeGuardArmed = false; return; }
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
+        this.modeGuardArmed = true;
+        return;
+      } catch (err) {
+        if (attempt === 2) {
+          this.modeGuardArmed = false;
+          this.emit('modeGuardFailed', err);
+        }
+      }
+    }
+  }
+
+  /** Whether the manual-mode confirmation gate is armed (server confirmed a mode). */
+  get isModeGuarded(): boolean {
+    return this.modeGuardArmed;
+  }
+
+  /** Throw if the manual-mode confirmation gate isn't armed (fail closed). */
+  private assertModeGuardArmed(): void {
+    if (!this.modeGuardArmed) {
+      throw new Error(
+        "Codeep: the confirmation gate isn't active — manual mode couldn't be set on the agent " +
+        '(update the Codeep CLI and reload the window). Refusing to send to avoid running tools without approval.',
+      );
+    }
+  }
+
   async send(message: string): Promise<void> {
     if (!this.process || !this.sessionId) {
       await this.start(); // fallback if auto-connect failed
     }
+    this.assertModeGuardArmed();
     // session/prompt resolving = response complete
     await this.request('session/prompt', {
       sessionId: this.sessionId,
@@ -245,6 +289,7 @@ export class AcpClient extends EventEmitter {
     if (!this.process || !this.sessionId) {
       await this.start();
     }
+    this.assertModeGuardArmed();
     let buffer = '';
     const onChunk = (text: string) => { buffer += text; };
     this.on('chunk', onChunk);
@@ -303,9 +348,7 @@ export class AcpClient extends EventEmitter {
       cwd: this.workspacePath,
     });
     this.sessionId = result?.sessionId ?? codeepSessionId;
-    if (this.sessionId) {
-      await this.request('session/set_mode', { sessionId: this.sessionId, modeId: 'manual' });
-    }
+    await this.armManualMode();
     if (result?.configOptions) {
       this.emit('configOptions', result.configOptions, result.modes ?? null);
     }
@@ -326,6 +369,9 @@ export class AcpClient extends EventEmitter {
   async setMode(modeId: string): Promise<void> {
     if (!this.sessionId) return;
     await this.request('session/set_mode', { sessionId: this.sessionId, modeId });
+    // A user-initiated mode switch the server accepted — the gate is armed
+    // (they've explicitly chosen this mode, including 'auto' on purpose).
+    this.modeGuardArmed = true;
     this.emit('modeChanged', modeId);
   }
 
@@ -359,6 +405,7 @@ export class AcpClient extends EventEmitter {
     this.process?.kill();
     this.process = null;
     this.sessionId = null;
+    this.modeGuardArmed = false; // a new session must re-arm; never carry a stale armed state
   }
 
   private scheduleReconnect(): void {
@@ -514,6 +561,8 @@ export class AcpClient extends EventEmitter {
           }
 
           if (update.sessionUpdate === 'current_mode_update' && update.currentModeId) {
+            // Server confirmed a session mode → the gate is armed.
+            this.modeGuardArmed = true;
             this.emit('modeChanged', update.currentModeId);
           }
         }
