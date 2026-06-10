@@ -28,7 +28,7 @@
 
   // src/webview/markdown.ts
   function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function inline(text) {
     return text.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
@@ -108,13 +108,13 @@
         i--;
         continue;
       }
-      if (/^>\s?/.test(line)) {
+      if (/^&gt;\s?/.test(line)) {
         if (!inBq) {
           closeLists();
           out.push("<blockquote>");
           inBq = true;
         }
-        out.push(inline(line.replace(/^>\s?/, "")) + "<br>");
+        out.push(inline(line.replace(/^&gt;\s?/, "")) + "<br>");
         continue;
       }
       if (inBq) {
