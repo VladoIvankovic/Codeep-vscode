@@ -1,3 +1,19 @@
+:root {
+  /* Theme-adaptive surfaces: VS Code tokens with the prior dark-theme
+     translucent values as fallbacks, so light themes stay readable instead
+     of painting white-on-white (or dark-on-light code blocks). */
+  --codeep-border:        var(--vscode-panel-border, rgba(255,255,255,0.1));
+  --codeep-border-strong: var(--vscode-input-border, rgba(255,255,255,0.15));
+  --codeep-overlay:       var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+  --codeep-btn-bg:        var(--vscode-button-secondaryBackground, rgba(255,255,255,0.08));
+  --codeep-btn-hover:     var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.15));
+  --codeep-code-bg:       var(--vscode-textCodeBlock-background, rgba(0,0,0,0.25));
+  --codeep-green:         var(--vscode-charts-green, #4ade80);
+  --codeep-yellow:        var(--vscode-charts-yellow, #fbbf24);
+  --codeep-blue:          var(--vscode-charts-blue, #60a5fa);
+  --codeep-red:           var(--vscode-errorForeground, #f87171);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -251,12 +267,12 @@ body {
 .session-item {
   padding: 7px 12px;
   cursor: pointer;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--codeep-border);
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.session-item:hover { background: rgba(255,255,255,0.05); }
+.session-item:hover { background: var(--codeep-overlay); }
 
 .session-delete {
   background: none;
@@ -270,7 +286,7 @@ body {
   flex-shrink: 0;
   margin-left: auto;
 }
-.session-delete:hover { opacity: 1; color: #f87171; }
+.session-delete:hover { opacity: 1; color: var(--codeep-red); }
 
 .session-info {
   flex: 1;
@@ -338,7 +354,7 @@ body {
 
 .message-content hr {
   border: none;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--codeep-border);
   margin: 6px 0;
 }
 
@@ -374,7 +390,7 @@ body {
 
 .message-content th,
 .message-content td {
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid var(--codeep-border-strong);
   padding: 4px 8px;
   vertical-align: top;
 }
@@ -391,7 +407,7 @@ body {
 }
 
 .message-content th {
-  background: rgba(255,255,255,0.05);
+  background: var(--codeep-overlay);
   font-weight: 600;
   color: var(--vscode-foreground);
   /* Don't fold short header labels into 2 lines — keep them readable
@@ -400,10 +416,10 @@ body {
 }
 
 .message-content tr:nth-child(even) td {
-  background: rgba(255,255,255,0.02);
+  background: var(--codeep-overlay);
 }
 
-.message.user .message-role { color: #60a5fa; }
+.message.user .message-role { color: var(--codeep-blue); }
 .message.user .message-content {
   background: rgba(96,165,250,0.08);
   border-radius: 6px;
@@ -462,7 +478,7 @@ body {
 .plan-card {
   font-size: 11px;
   color: var(--vscode-foreground);
-  border-left: 2px solid #4ade80;
+  border-left: 2px solid var(--codeep-green);
   padding: 5px 8px;
   background: rgba(74, 222, 128, 0.05);
   border-radius: 3px;
@@ -471,7 +487,7 @@ body {
 
 .plan-label {
   font-weight: 600;
-  color: #4ade80;
+  color: var(--codeep-green);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 10px;
@@ -508,9 +524,9 @@ body {
 
 .plan-pending     .plan-icon { color: var(--vscode-descriptionForeground); opacity: 0.6; }
 .plan-pending     .plan-text { opacity: 0.7; }
-.plan-in_progress .plan-icon { color: #fbbf24; }
+.plan-in_progress .plan-icon { color: var(--codeep-yellow); }
 .plan-in_progress .plan-text { color: var(--vscode-foreground); }
-.plan-completed   .plan-icon { color: #4ade80; }
+.plan-completed   .plan-icon { color: var(--codeep-green); }
 .plan-completed   .plan-text { opacity: 0.55; text-decoration: line-through; }
 .plan-high        .plan-text { font-weight: 500; }
 
@@ -519,7 +535,7 @@ body {
   color: var(--vscode-descriptionForeground);
   border-left: 2px solid #f02a30;
   padding: 3px 6px;
-  background: rgba(255,255,255,0.03);
+  background: var(--codeep-overlay);
   border-radius: 3px;
   overflow: hidden;
   flex-shrink: 0;
@@ -711,9 +727,9 @@ body {
 #btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #btn-stop {
-  background: rgba(255,255,255,0.08);
+  background: var(--codeep-btn-bg);
   color: var(--vscode-foreground);
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid var(--codeep-border-strong);
   border-radius: 4px;
   padding: 6px 12px;
   cursor: pointer;
@@ -722,12 +738,12 @@ body {
   display: none;
   align-items: center;
 }
-#btn-stop:hover { background: rgba(255,255,255,0.15); }
+#btn-stop:hover { background: var(--codeep-btn-hover); }
 
 code {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 0.9em;
-  background: rgba(255,255,255,0.08);
+  background: var(--codeep-btn-bg);
   padding: 1px 4px;
   border-radius: 3px;
 }
@@ -736,7 +752,7 @@ code {
   border-radius: 6px;
   overflow: hidden;
   margin: 4px 0;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--codeep-border);
 }
 
 .code-header {
@@ -744,7 +760,7 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 4px 10px;
-  background: rgba(255,255,255,0.06);
+  background: var(--codeep-overlay);
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
   font-family: var(--vscode-editor-font-family, monospace);
@@ -752,7 +768,7 @@ code {
 
 .copy-btn {
   background: none;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid var(--codeep-border-strong);
   color: var(--vscode-descriptionForeground);
   padding: 1px 6px;
   border-radius: 3px;
@@ -760,7 +776,7 @@ code {
   cursor: pointer;
   font-family: var(--vscode-font-family);
 }
-.copy-btn:hover { background: rgba(255,255,255,0.1); }
+.copy-btn:hover { background: var(--codeep-btn-hover); }
 
 pre {
   background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.3));
@@ -802,8 +818,8 @@ pre code { background: none; padding: 0; }
 }
 
 .permission-actions button {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: var(--codeep-btn-bg);
+  border: 1px solid var(--codeep-border-strong);
   color: var(--vscode-foreground);
   padding: 3px 10px;
   border-radius: 3px;
@@ -811,8 +827,8 @@ pre code { background: none; padding: 0; }
   cursor: pointer;
   font-family: var(--vscode-font-family);
 }
-.permission-actions button:hover { background: rgba(255,255,255,0.15); }
-.permission-actions button.reject { color: #f87171; border-color: rgba(248,113,113,0.3); }
+.permission-actions button:hover { background: var(--codeep-btn-hover); }
+.permission-actions button.reject { color: var(--codeep-red); border-color: rgba(248,113,113,0.3); }
 
 .permission-resolved {
   font-size: 11px;
@@ -824,12 +840,12 @@ pre code { background: none; padding: 0; }
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
   line-height: 1.5;
-  background: rgba(0,0,0,0.25);
+  background: var(--codeep-code-bg);
   border-radius: 4px;
   padding: 6px 8px;
   max-height: 240px;
   overflow: auto;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--codeep-border);
 }
 
 .diff-line {
@@ -839,27 +855,27 @@ pre code { background: none; padding: 0; }
 }
 
 .diff-add {
-  color: #a6e3a1;
-  background: rgba(74, 222, 128, 0.08);
+  color: var(--codeep-green);
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(74, 222, 128, 0.08));
 }
 
 .diff-del {
-  color: #f38ba8;
-  background: rgba(248, 113, 113, 0.08);
+  color: var(--codeep-red);
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(248, 113, 113, 0.08));
 }
 
 .permission-cmd {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
-  background: rgba(0,0,0,0.25);
+  background: var(--codeep-code-bg);
   border-radius: 4px;
   padding: 6px 8px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--codeep-border);
   overflow-x: auto;
 }
 
 .permission-cmd-line {
-  color: #fbbf24;
+  color: var(--codeep-yellow);
   white-space: pre;
 }
 

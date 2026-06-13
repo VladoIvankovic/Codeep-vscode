@@ -173,6 +173,7 @@ export class AcpClient extends EventEmitter {
     // directly. The CLI also reads these files itself; ACP-provided ones win
     // on name collisions.
     const mcpServers = loadMcpServerConfigForVsCode(this.workspacePath);
+    const wasFresh = this.startFresh;
     const session = await this.request('session/new', {
       cwd: this.workspacePath,
       fresh: this.startFresh,
@@ -196,6 +197,16 @@ export class AcpClient extends EventEmitter {
     // Emit config options so UI can build settings panel
     if (session?.configOptions) {
       this.emit('configOptions', session.configOptions, session.modes);
+    }
+
+    // On a resume (not a fresh new-session), session/new returns the prior
+    // transcript. Replay it so a window reload doesn't show an empty chat
+    // while the agent still has the history server-side. Fresh starts have
+    // nothing to replay.
+    if (!wasFresh && Array.isArray(session?.history) && session.history.length > 0) {
+      const replay = (session.history as Array<{ role: string; content: string }>)
+        .filter((m) => m.role === 'user' || m.role === 'assistant');
+      if (replay.length > 0) this.emit('historyRestored', replay);
     }
   }
 
@@ -322,9 +333,33 @@ export class AcpClient extends EventEmitter {
   }
 
   async newSession(): Promise<void> {
-    this.startFresh = true;
-    this.stop();
-    await this.start();
+    // Not connected yet → full start (which creates a fresh session).
+    if (!this.process) {
+      this.startFresh = true;
+      await this.start();
+      this.emit('newSession');
+      return;
+    }
+    // Connected → spin up a new session on the SAME process. The CLI
+    // supports multiple sessions per process, so this drops the old chat
+    // without tearing down warm MCP servers (and the seconds of relaunch
+    // latency a respawn cost). Cancel any in-flight run first so its stream
+    // can't bleed into the new session.
+    this.cancel();
+    const mcpServers = loadMcpServerConfigForVsCode(this.workspacePath);
+    const session = await this.request('session/new', {
+      cwd: this.workspacePath,
+      fresh: true,
+      ...(mcpServers.length > 0 ? { mcpServers } : {}),
+    });
+    this.sessionId = session?.sessionId ?? null;
+    // Re-arm manual mode (fails closed) and re-apply the VS Code config pins
+    // for the new session, mirroring start().
+    await this.armManualMode();
+    await this.applyOverrides();
+    if (session?.configOptions) {
+      this.emit('configOptions', session.configOptions, session.modes);
+    }
     this.emit('newSession');
   }
 

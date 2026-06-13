@@ -439,7 +439,7 @@
     }
     return null;
   }
-  function appendPermission(requestId, label, detail, toolName, toolInput) {
+  function appendPermission(requestId, label, detail, toolName, toolInput, options) {
     const div = document.createElement("div");
     div.className = "permission-card";
     div.dataset.requestId = String(requestId);
@@ -460,26 +460,37 @@
       div.appendChild(preview);
     const actions = document.createElement("div");
     actions.className = "permission-actions";
-    const choices = [
-      ["allow_once", "Allow", "Allow this tool just for this call"],
-      ["allow_always", "Allow for this session", "Auto-allow this tool until the CLI restarts"],
-      ["reject_once", "Reject", "Block this call; the agent may try a different approach"]
+    const HINTS = {
+      allow_once: { label: "Allow", tooltip: "Allow this tool just for this call" },
+      allow_always: { label: "Allow for this session", tooltip: "Auto-allow this tool until the CLI restarts" },
+      reject_once: { label: "Reject", tooltip: "Block this call; the agent may try a different approach" },
+      reject_always: { label: "Reject for this session", tooltip: "Block this tool until the CLI restarts" }
+    };
+    const opts = options && options.length ? options : [
+      { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+      { optionId: "allow_always", name: "Allow for this session", kind: "allow_always" },
+      { optionId: "reject_once", name: "Reject", kind: "reject_once" }
     ];
-    choices.forEach(([choice, btnLabel, tooltip]) => {
+    opts.forEach((opt) => {
+      const hint = HINTS[opt.kind];
       const btn = document.createElement("button");
-      btn.textContent = btnLabel;
-      btn.title = tooltip;
-      if (choice === "reject_once")
+      btn.textContent = hint?.label ?? opt.name;
+      if (hint)
+        btn.title = hint.tooltip;
+      if (opt.kind.startsWith("reject"))
         btn.className = "reject";
-      btn.dataset.choice = choice;
+      btn.dataset.choice = opt.kind;
+      btn.dataset.optionId = opt.optionId;
       actions.appendChild(btn);
     });
     div.appendChild(actions);
     messagesEl.appendChild(div);
     setTimeout(() => div.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
   }
-  function respondPermission(card, choice) {
-    const label = card.querySelector(`[data-choice="${choice}"]`)?.textContent ?? choice;
+  function respondPermission(card, choice, optionId) {
+    const btn = card.querySelector(`[data-choice="${choice}"]`);
+    const label = btn?.textContent ?? choice;
+    const resolvedOptionId = optionId ?? btn?.dataset.optionId ?? choice;
     card.innerHTML = "";
     const resolved = document.createElement("div");
     resolved.className = "permission-resolved";
@@ -488,7 +499,8 @@
     vscode.postMessage({
       type: "permissionResponse",
       requestId: Number(card.dataset.requestId),
-      choice
+      choice,
+      optionId: resolvedOptionId
     });
     setTimeout(() => {
       card.style.transition = "opacity 0.4s";
@@ -991,6 +1003,11 @@
         return;
       }
     }
+    if (e.key === "Escape" && state.isStreaming) {
+      e.preventDefault();
+      vscode.postMessage({ type: "cancel" });
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -1111,7 +1128,7 @@
         if (!state.isStreaming)
           enterStreaming("Working...");
         clearAgentStatus();
-        appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput);
+        appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput, msg.options);
         break;
       case "permissionResolved": {
         const card = document.querySelector(`.permission-card[data-request-id="${msg.requestId}"]`);
@@ -1193,7 +1210,7 @@
     if (permBtn) {
       const card = permBtn.closest(".permission-card");
       if (card)
-        respondPermission(card, permBtn.dataset.choice ?? "");
+        respondPermission(card, permBtn.dataset.choice ?? "", permBtn.dataset.optionId);
       return;
     }
     const copyBtn = target.closest(".copy-btn");

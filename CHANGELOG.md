@@ -4,6 +4,38 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] — 2026-06-13
+
+> Chat-surface polish: the conversation survives a window reload, light themes are readable, the keybindings no longer fight VS Code's defaults, Esc stops a run, "New chat" keeps your CLI (and MCP servers) warm, and the permission card shows every option the agent offers.
+
+### Added
+
+- **Esc stops an in-flight run** from the chat input — mirrors the Stop button.
+- **Reject-always in the permission card.** The card now renders the *actual*
+  option set the CLI offers (Allow once / Allow for this session / Reject /
+  **Reject for this session**) instead of a hardcoded three, so a future CLI
+  option shows up with no extension change.
+
+### Changed
+
+- **"New chat" no longer respawns the CLI.** It now opens a fresh session on
+  the running process, so warm MCP servers stay up and there's no relaunch
+  lag — the CLI already supports multiple sessions per process.
+
+### Fixed
+
+- **Your conversation comes back after a window reload.** The CLI re-attaches
+  the previous session server-side, but the webview rendered blank — so it
+  looked like the chat was lost while the agent still had the full context.
+  The transcript is now replayed on reconnect ("Restored previous chat").
+- **Readable on light themes.** ~30 hardcoded translucent-white surfaces and a
+  dark code-block background painted white-on-white (and dark-on-light code) on
+  light themes. They now use VS Code theme tokens (`--vscode-*`), so code,
+  diffs, borders, and buttons adapt to whatever theme you run.
+- **Keybindings stop shadowing VS Code defaults.** `⌘⇧C` (open chat) collided
+  with "Open New External Terminal" and `⌘⇧X` (send selection) collided with
+  the Extensions view; both moved to `⌘⌥`-based shortcuts (`⌘⌥C` / `⌘⌥X`).
+
 ## [2.5.1] — 2026-06-09
 
 > Security: the manual-mode permission gate now fails closed. If the extension can't put the agent into manual mode on connect, it refuses to send prompts (with a clear message) instead of letting the agent run tools unguarded.

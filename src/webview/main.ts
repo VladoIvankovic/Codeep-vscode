@@ -98,6 +98,13 @@ inputEl.addEventListener('keydown', (e) => {
       return;
     }
   }
+  // Esc stops an in-flight run (mirrors the Stop button) — only when the
+  // mention popup isn't open (handled above).
+  if (e.key === 'Escape' && state.isStreaming) {
+    e.preventDefault();
+    vscode.postMessage({ type: 'cancel' });
+    return;
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     send();
@@ -237,7 +244,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'permission':
       if (!state.isStreaming) enterStreaming('Working...');
       clearAgentStatus();
-      appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput);
+      appendPermission(msg.requestId, msg.label, msg.detail, msg.toolName, msg.toolInput, msg.options);
       break;
 
     case 'permissionResolved': {
@@ -337,7 +344,7 @@ messagesEl.addEventListener('click', (e) => {
   const permBtn = target.closest('.permission-actions button') as HTMLButtonElement | null;
   if (permBtn) {
     const card = permBtn.closest('.permission-card') as HTMLElement | null;
-    if (card) respondPermission(card, permBtn.dataset.choice ?? '');
+    if (card) respondPermission(card, permBtn.dataset.choice ?? '', permBtn.dataset.optionId);
     return;
   }
   // Code block copy buttons

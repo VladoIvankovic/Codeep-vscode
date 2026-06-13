@@ -69,12 +69,19 @@ function renderPermissionPreview(toolName: string | undefined, input: ToolInput 
   return null;
 }
 
+export interface PermissionOption {
+  optionId: string;
+  name: string;
+  kind: string;
+}
+
 export function appendPermission(
   requestId: number,
   label: string,
   detail: string | undefined,
   toolName: string | undefined,
   toolInput: ToolInput | undefined,
+  options?: PermissionOption[],
 ): void {
   const div = document.createElement('div');
   div.className = 'permission-card';
@@ -99,21 +106,33 @@ export function appendPermission(
 
   const actions = document.createElement('div');
   actions.className = 'permission-actions';
-  // The CLI's `allow_always` is session-scoped (cleared when the CLI
-  // process exits), not persisted to disk — but "Allow always" reads as
-  // "forever" to most users. Relabel to make the scope explicit and add
-  // a tooltip pointing at the lifetime.
-  const choices: Array<['allow_once' | 'allow_always' | 'reject_once', string, string]> = [
-    ['allow_once',   'Allow',                'Allow this tool just for this call'],
-    ['allow_always', 'Allow for this session', 'Auto-allow this tool until the CLI restarts'],
-    ['reject_once',  'Reject',               'Block this call; the agent may try a different approach'],
-  ];
-  choices.forEach(([choice, btnLabel, tooltip]) => {
+  // Per-kind UI hints. The CLI's allow_always / reject_always are
+  // session-scoped (cleared when the CLI exits), not persisted — but
+  // "always" reads as "forever", so relabel to make the scope explicit.
+  const HINTS: Record<string, { label: string; tooltip: string }> = {
+    allow_once:    { label: 'Allow',                  tooltip: 'Allow this tool just for this call' },
+    allow_always:  { label: 'Allow for this session', tooltip: 'Auto-allow this tool until the CLI restarts' },
+    reject_once:   { label: 'Reject',                 tooltip: 'Block this call; the agent may try a different approach' },
+    reject_always: { label: 'Reject for this session', tooltip: 'Block this tool until the CLI restarts' },
+  };
+  // Render the server's actual option set when present (includes
+  // reject_always, and any option a future CLI adds); fall back to the
+  // built-in three for older CLIs that send no options array.
+  const opts: PermissionOption[] = (options && options.length)
+    ? options
+    : [
+        { optionId: 'allow_once',   name: 'Allow',                  kind: 'allow_once' },
+        { optionId: 'allow_always', name: 'Allow for this session', kind: 'allow_always' },
+        { optionId: 'reject_once',  name: 'Reject',                 kind: 'reject_once' },
+      ];
+  opts.forEach((opt) => {
+    const hint = HINTS[opt.kind];
     const btn = document.createElement('button');
-    btn.textContent = btnLabel;
-    btn.title = tooltip;
-    if (choice === 'reject_once') btn.className = 'reject';
-    btn.dataset.choice = choice;
+    btn.textContent = hint?.label ?? opt.name;
+    if (hint) btn.title = hint.tooltip;
+    if (opt.kind.startsWith('reject')) btn.className = 'reject';
+    btn.dataset.choice = opt.kind;
+    btn.dataset.optionId = opt.optionId;
     actions.appendChild(btn);
   });
   div.appendChild(actions);
@@ -122,8 +141,13 @@ export function appendPermission(
   setTimeout(() => div.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
-export function respondPermission(card: HTMLElement, choice: string): void {
-  const label = card.querySelector(`[data-choice="${choice}"]`)?.textContent ?? choice;
+export function respondPermission(card: HTMLElement, choice: string, optionId?: string): void {
+  const btn = card.querySelector<HTMLElement>(`[data-choice="${choice}"]`);
+  const label = btn?.textContent ?? choice;
+  // Resolve the exact server optionId: explicit arg (button click) →
+  // the button's stored id → the kind string (diff-lens path; the
+  // built-in optionId equals its kind).
+  const resolvedOptionId = optionId ?? btn?.dataset.optionId ?? choice;
   card.innerHTML = '';
   const resolved = document.createElement('div');
   resolved.className = 'permission-resolved';
@@ -133,6 +157,7 @@ export function respondPermission(card: HTMLElement, choice: string): void {
     type: 'permissionResponse',
     requestId: Number(card.dataset.requestId),
     choice,
+    optionId: resolvedOptionId,
   });
   setTimeout(() => {
     card.style.transition = 'opacity 0.4s';

@@ -394,6 +394,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
   async newSession(): Promise<void> {
     this.clearPermissionHandlers();
+    // The new session emits a welcome message; filter it like a fresh
+    // connect does. Without this, the in-process new-session path (no
+    // reconnect, so the 'connected' handler doesn't re-arm the flag) leaks
+    // the welcome bubble into the empty chat.
+    this.skipWelcome = true;
     try {
       await this.client?.newSession();
       this.view?.webview.postMessage({ type: 'clearChat' });
@@ -542,6 +547,15 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: 'status', text: 'Session loaded' });
     });
 
+    // Auto-replay the prior transcript after a window reload — the CLI
+    // re-attached the session server-side (fresh=false), so the agent still
+    // has the context; this just repaints it instead of a blank chat.
+    this.client.on('historyRestored', (history: { role: string; content: string }[]) => {
+      this.view?.webview.postMessage({ type: 'clearChat' });
+      this.view?.webview.postMessage({ type: 'history', messages: history });
+      this.view?.webview.postMessage({ type: 'status', text: 'Restored previous chat' });
+    });
+
     this.client.on('connected', () => {
       this.output.appendLine('[ACP] Connected');
       this.updateStatus({ connection: 'connected' });
@@ -579,6 +593,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           detail,
           toolName,
           toolInput,
+          // The server's actual option set (allow_once / allow_always /
+          // reject_once / reject_always). Forward it so the webview renders
+          // exactly what's offered — including Reject-always — instead of a
+          // hardcoded three, and so future CLI options appear with no change.
+          options: msg.params?.options ?? [],
         });
 
         // For write/edit tools, also open a native VS Code diff editor so
@@ -605,11 +624,13 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         // Register a one-shot resolver. The main webview message switch picks
         // it up via pendingPermissions and forwards the reply to the CLI.
         this.pendingPermissions.set(msg.id, (reply: any) => {
-          const optionId = reply.choice === 'allow_once'   ? 'allow_once'
-                         : reply.choice === 'allow_always' ? 'allow_always'
-                         : 'reject_once';
+          // Prefer the exact optionId the webview chose from the server's
+          // option set (covers reject_always + any future option). Fall back
+          // to the legacy `choice` kind from the diff-lens path, where the
+          // built-in optionId equals the kind string.
+          const optionId: string | undefined = reply.optionId ?? reply.choice;
           this.client!.respond(msg.id, {
-            outcome: reply.choice
+            outcome: optionId
               ? { type: 'selected', optionId }
               : { type: 'cancelled' },
           });

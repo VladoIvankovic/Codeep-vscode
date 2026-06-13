@@ -2,7 +2,7 @@
   "name": "codeep",
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
@@ -202,13 +202,13 @@
     "keybindings": [
       {
         "command": "codeep.openChat",
-        "key": "ctrl+shift+c",
-        "mac": "cmd+shift+c"
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
       },
       {
         "command": "codeep.sendSelection",
-        "key": "ctrl+shift+x",
-        "mac": "cmd+shift+x",
+        "key": "ctrl+alt+x",
+        "mac": "cmd+alt+x",
         "when": "editorHasSelection"
       },
       {
