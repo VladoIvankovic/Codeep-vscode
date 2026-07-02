@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ChatPanel, type ChatStatusState } from './chatPanel';
-import { registerDiffPreview, DIFF_PREVIEW_SCHEME } from './diffPreview';
+import { registerDiffPreview, DIFF_PREVIEW_SCHEME, getPendingPermissionForUri } from './diffPreview';
 import { DiffPreviewCodeLensProvider } from './diffCodeLens';
 import { listServers, addServer, removeServer, configPath, McpScope, VsCodeMcpServer } from './mcpConfigFile';
 import { registerCodeActions } from './codeActions';
@@ -57,8 +57,13 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.tabGroups.onDidChangeTabs((evt) => {
       for (const tab of evt.closed) {
         const input = tab.input;
-        if (input instanceof vscode.TabInputTextDiff) {
-          if (input.modified.scheme === DIFF_PREVIEW_SCHEME) {
+        if (input instanceof vscode.TabInputTextDiff && input.modified.scheme === DIFF_PREVIEW_SCHEME) {
+          // Only treat a close as an implicit reject while a permission is
+          // still pending for this diff. Our own programmatic close (after the
+          // user already answered) and already-resolved diffs have no mapping —
+          // skipping them avoids a spurious "no pending permission" toast on
+          // every normal Allow/Reject.
+          if (getPendingPermissionForUri(input.modified) !== null) {
             chatPanel.respondToPermissionFromDiff(input.modified, 'reject_once');
           }
         }
@@ -309,6 +314,11 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('Codeep: select some code first.');
         return;
       }
+      // Snapshot the document version so we can detect edits made during the
+      // (potentially minutes-long) model call. A plain vscode.Range isn't
+      // tracked across edits, so applying it blindly after the doc changed
+      // could silently overwrite an unrelated region.
+      const docVersionAtCapture = editor.document.version;
 
       const instructions = await vscode.window.showInputBox({
         prompt: 'How should Codeep change this code?',
@@ -344,6 +354,16 @@ export function activate(context: vscode.ExtensionContext) {
       }
       if (newCode === code) {
         vscode.window.showInformationMessage('Codeep: model returned the same code, no change applied.');
+        return;
+      }
+      // The document may have been edited while the model was running, which
+      // would make `range` point at the wrong text. Bail rather than silently
+      // corrupt the file if the version bumped or the target text no longer
+      // matches what we captured.
+      if (editor.document.version !== docVersionAtCapture || editor.document.getText(range) !== code) {
+        vscode.window.showWarningMessage(
+          'Codeep: the document changed while the edit was in progress — nothing was applied. Try again.',
+        );
         return;
       }
 

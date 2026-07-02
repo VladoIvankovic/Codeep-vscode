@@ -306,7 +306,9 @@
       item.style.opacity = "0.5";
     if (status === "failed")
       item.style.color = "#f87171";
-    state.toolCallItems.delete(toolCallId);
+    if (status === "completed" || status === "failed") {
+      state.toolCallItems.delete(toolCallId);
+    }
   }
   function finalizeToolGroup() {
     if (!state.currentToolGroupEl)
@@ -385,6 +387,7 @@
     state.currentAssistantEl = null;
     state.currentToolGroupEl = null;
     state.currentThoughtEl = null;
+    state.toolCallItems.clear();
   }
 
   // src/webview/permission.ts

@@ -59,7 +59,7 @@ export class AcpClient extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer = '';
   private reqId = 1;
-  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>();
   private sessionId: string | null = null;
   private startFresh = false;
   private suppressNextResponseEnd = false;
@@ -427,6 +427,12 @@ export class AcpClient extends EventEmitter {
       const msg = JSON.stringify({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.sessionId } });
       this.process.stdin.write(msg + '\n');
     }
+    // Disarm the idle watchdog for the cancelled prompt. armIdleTimer() re-arms
+    // on the next session/prompt, so clearing here can't drop legitimate
+    // coverage — but it stops a timer armed for the old prompt from firing a
+    // spurious cancel against a fresh prompt/session (cancelAndSend, newSession).
+    this.clearIdleTimer();
+    this.activePromptId = null;
   }
 
   stop(): void {
@@ -467,7 +473,8 @@ export class AcpClient extends EventEmitter {
   private rejectAllPending(err: Error): void {
     this.clearIdleTimer();
     this.activePromptId = null;
-    for (const { reject } of this.pending.values()) {
+    for (const { reject, timer } of this.pending.values()) {
+      if (timer) clearTimeout(timer);
       reject(err);
     }
     this.pending.clear();
@@ -489,12 +496,16 @@ export class AcpClient extends EventEmitter {
         this.armIdleTimer();
       } else {
         // Short fixed timeout for control-plane requests (set_mode, list, etc.)
-        setTimeout(() => {
+        // Keep the handle on the pending entry so flush() can clear it when the
+        // response lands — otherwise the timer lingers up to 30s per request.
+        const timer = setTimeout(() => {
           if (this.pending.has(id)) {
             this.pending.delete(id);
             reject(new Error(`Request timeout: ${method}`));
           }
         }, 30_000);
+        const entry = this.pending.get(id);
+        if (entry) entry.timer = timer;
       }
     });
   }
@@ -554,7 +565,8 @@ export class AcpClient extends EventEmitter {
             this.activePromptId = null;
             this.clearIdleTimer();
           }
-          const { resolve, reject } = this.pending.get(msg.id)!;
+          const { resolve, reject, timer } = this.pending.get(msg.id)!;
+          if (timer) clearTimeout(timer);
           this.pending.delete(msg.id);
           if (msg.error) reject(new Error(msg.error.message));
           else resolve(msg.result);

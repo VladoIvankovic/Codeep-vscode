@@ -4,6 +4,40 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.6.1] — 2026-07-01
+
+> Reliability pass on the permission + diff lifecycle: no more dead permission cards after a CLI crash, no spurious toasts on every Allow/Reject, tool rows finish in the right state, and inline edit won't clobber a file you edited mid-run. All eight fixes came out of a detailed adversarial audit of the extension.
+
+### Fixed
+
+- **Permission cards no longer get stuck after a CLI crash.** If the CLI exited
+  while a permission card was pending, the card stayed on screen but clicking
+  Allow did nothing (the request id no longer existed on the reconnected
+  process). The disconnect path now drops the pending resolvers, closes any
+  orphaned diff tabs, and dismisses the cards.
+- **No more "no pending permission for this diff" toast on every Allow/Reject.**
+  The tab-close handler fired an implicit reject for the extension's *own*
+  programmatic diff close after a permission resolved, popping a confusing
+  toast on every normal approval. It now only reacts when a permission is
+  genuinely still pending for the closed diff.
+- **Cancel / New chat no longer leaves orphaned diff tabs behind.** A proposed-
+  change diff opened for an in-flight write/edit stayed open — showing
+  live-looking Accept / Reject lenses — after you cancelled or started a new
+  session. Those tabs are now closed and their tracking dropped.
+- **Tool rows reach their final state.** A tool that streamed multiple updates
+  (in-progress → completed/failed) could get dropped from tracking on the first
+  update, so it never dimmed for completed or turned red for failed. The row
+  now settles correctly and only stops being tracked once it's terminal.
+- **Idle-timeout watchdog no longer fires against the wrong run.** After a
+  cancel-and-resend or a new session, a watchdog armed for the previous prompt
+  could fire a spurious cancel. Cancelling now disarms it.
+- **Inline edit won't clobber a file you edited while it was running.** If the
+  document changed during the (possibly minutes-long) model call, the edit is
+  now skipped with a warning instead of silently overwriting the wrong region.
+- **Internal:** control-plane request timers are now cleared when the response
+  arrives, and per-turn tool-call element references are released — small
+  resource-hygiene fixes with no user-visible behaviour change.
+
 ## [2.6.0] — 2026-06-13
 
 > Chat-surface polish: the conversation survives a window reload, light themes are readable, the keybindings no longer fight VS Code's defaults, Esc stops a run, "New chat" keeps your CLI (and MCP servers) warm, and the permission card shows every option the agent offers.

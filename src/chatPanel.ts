@@ -52,6 +52,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   // installed its own listener — fine for one-off prompts but every webview
   // message ran through every active handler, scaling O(n) per message.
   private pendingPermissions = new Map<number, (reply: any) => void>();
+  // Native diff-editor handles opened for in-flight write/edit permissions.
+  // Tracked so clearPermissionHandlers() (cancel / new-session / disconnect)
+  // can close the tabs and drop their URI→request-id mappings instead of
+  // leaving orphaned diffs with live-looking Accept/Reject lenses behind.
+  private openDiffPreviews = new Set<{ proposedUri: vscode.Uri; close: () => Promise<void> }>();
   /** Set by extension.ts so we can refresh the diff CodeLens after a new permission is tracked. */
   private diffLensRefresher: (() => void) | null = null;
   // Cached provider list from CLI's session/list_providers. Static for the
@@ -441,6 +446,18 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
   private clearPermissionHandlers(): void {
     this.pendingPermissions.clear();
+    // Close any diff tabs opened for the now-abandoned permission requests.
+    // Drop each URI→request-id mapping *before* closing so the tab-close
+    // listener in extension.ts sees no pending permission and stays silent
+    // (rather than firing a spurious implicit-reject / "already resolved" toast).
+    // close() also clears the mapping itself, so the double-drop is harmless.
+    const previews = [...this.openDiffPreviews];
+    this.openDiffPreviews.clear();
+    for (const h of previews) {
+      clearPendingPermissionForUri(h.proposedUri);
+      void h.close().catch(() => {});
+    }
+    if (previews.length > 0) this.diffLensRefresher?.();
   }
 
   private initClient(): void {
@@ -487,6 +504,13 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
     this.client.on('disconnected', (code: number) => {
       this.output.appendLine(`[ACP] Disconnected (exit code: ${code})`);
+      // A dead CLI invalidates every in-flight permission request id, so drop
+      // the resolvers, close any orphaned diff tabs, and dismiss the webview
+      // cards. Otherwise a card left pending when the CLI crashes becomes a
+      // dead, unclickable card — clicking Allow would respond against a stale
+      // id on the reconnected process, silently doing nothing.
+      this.clearPermissionHandlers();
+      this.view?.webview.postMessage({ type: 'cancelPermissions' });
       // Provider list belongs to the CLI process — drop it so a reconnect
       // refetches against the new server (it might be a different version).
       this.providerCache = null;
@@ -616,6 +640,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         // and respond from inside the diff editor without going back to chat.
         diffHandlePromise.then(handle => {
           if (handle) {
+            this.openDiffPreviews.add(handle);
             trackPendingPermission(handle.proposedUri, msg.id);
             this.diffLensRefresher?.();  // nudge VS Code to re-render lenses
           }
@@ -641,7 +666,10 @@ export class ChatPanel implements vscode.WebviewViewProvider {
           // the URI → request-id mapping so a stray late lens click can't
           // re-fire the resolver.
           diffHandlePromise.then(h => {
-            if (h) clearPendingPermissionForUri(h.proposedUri);
+            if (h) {
+              this.openDiffPreviews.delete(h);
+              clearPendingPermissionForUri(h.proposedUri);
+            }
             return h?.close().catch(() => {});
           });
         });

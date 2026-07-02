@@ -97,7 +97,13 @@ export function updateToolCall(toolCallId: string, status: string): void {
   item.dataset.status = status;
   if (status === 'completed') item.style.opacity = '0.5';
   if (status === 'failed') item.style.color = '#f87171';
-  state.toolCallItems.delete(toolCallId);
+  // A single tool call emits multiple tool_call_update notifications
+  // (in_progress → completed/failed). Only drop the entry once it reaches a
+  // terminal state — deleting on the first non-terminal update would leave the
+  // row stuck looking active, because the terminal update then finds no item.
+  if (status === 'completed' || status === 'failed') {
+    state.toolCallItems.delete(toolCallId);
+  }
 }
 
 export function finalizeToolGroup(): void {
@@ -183,4 +189,9 @@ export function resetTurn(): void {
   state.currentAssistantEl = null;
   state.currentToolGroupEl = null;
   state.currentThoughtEl = null;
+  // Release element references for any tool calls that never got a terminal
+  // update (interrupted/cancelled runs, or a CLI that omits the final update).
+  // finalizeToolGroup() already ran at responseEnd, so nothing downstream needs
+  // these ids — without this they'd accumulate detached nodes across turns.
+  state.toolCallItems.clear();
 }
