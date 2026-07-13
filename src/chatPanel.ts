@@ -39,6 +39,9 @@ function friendlyError(msg: string): string {
   if (msg.includes('CLI not found'))      return 'Codeep CLI not found. Run: npm install -g codeep';
   return msg;
 }
+// Exposed for unit tests (the ChatPanel class is hard to instantiate
+// without a real VS Code extension host). Not part of the public API.
+export { friendlyError as _friendlyErrorForTest };
 
 export class ChatPanel implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;

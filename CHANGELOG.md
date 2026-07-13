@@ -4,6 +4,22 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.7.0] — 2026-07-13
+
+> Compatibility sync with CLI 2.15.0. No extension behaviour changes — the extension already speaks ACP to the CLI, so the CLI's new cross-tool features (`AGENTS.md` rules, `.mcp.json`, cross-device `/cloud` resume) are picked up automatically once the user runs the matching CLI. This release just bumps the version and documents the pairing.
+
+### Changed
+
+- **Version bump 2.6.1 → 2.7.0.** Aligns the extension's marketing version with
+  the CLI's 2.15 line. The extension's own behaviour is unchanged; this is a
+  compatibility-sync release so users have a clear "CLI ≥ 2.15 ↔ extension ≥ 2.7"
+  pairing to refer to.
+- **ACP registry entry bumped to 2.15.0** (`acp-registry/codeep/agent.json`).
+  The registry entry had fallen behind to 2.4.2 — eleven minor releases out of
+  date — so ACP clients (Zed, Cursor, etc.) were advertising a stale binary.
+  All four platform archives (darwin-aarch64, darwin-x86_64, linux-x86_64,
+  linux-aarch64) now point at the `v2.15.0` GitHub release.
+
 ## [2.6.1] — 2026-07-01
 
 > Reliability pass on the permission + diff lifecycle: no more dead permission cards after a CLI crash, no spurious toasts on every Allow/Reject, tool rows finish in the right state, and inline edit won't clobber a file you edited mid-run. All eight fixes came out of a detailed adversarial audit of the extension.

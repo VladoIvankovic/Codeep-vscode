@@ -29,6 +29,10 @@ function inline(text: string): string {
     });
 }
 
+// Exposed for unit tests (security-sensitive: HTML escaping + URL scheme
+// filtering). Not part of the public API.
+export { escapeHtml as _escapeHtmlForTest, inline as _inlineForTest };
+
 export function renderMarkdown(text: string): string {
   const blocks: string[] = [];
 

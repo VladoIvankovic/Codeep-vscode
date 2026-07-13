@@ -109,6 +109,10 @@ function buildPrompt(
   }
 }
 
+// Exposed for unit tests (the provider + register path need a live VS
+// Code extension host). Not part of the public API.
+export { fence as _fenceForTest, buildPrompt as _buildPromptForTest };
+
 /**
  * Register the lightbulb provider + its worker command. `send` should push
  * the prompt into the chat and reveal the Codeep view.

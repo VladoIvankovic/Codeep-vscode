@@ -9,6 +9,14 @@ import { registerSessionsTree } from './sessionsTree';
 import { registerChatParticipant } from './chatParticipant';
 import { registerCodeepTools } from './codeepTools';
 import { registerProfileCommands } from './profile';
+import { renderStatusBar } from './statusBarRenderer';
+import {
+  validateMcpServerName,
+  validateSkillBundleName,
+  validateApiKey,
+  validateModelId,
+  validateRequired,
+} from './validators';
 
 export function activate(context: vscode.ExtensionContext) {
   // Register before ChatPanel — chatPanel.ts calls showProposedChange()
@@ -93,48 +101,19 @@ export function activate(context: vscode.ExtensionContext) {
   statusBar.show();
   context.subscriptions.push(statusBar);
 
-  const renderStatusBar = (s: ChatStatusState): void => {
-    // Default action is "open chat"; the connected state overrides it to the
-    // model picker so a click on "Codeep · <model>" lets you switch models.
-    statusBar.command = 'codeep.openChat';
-    switch (s.connection) {
-      case 'connecting':
-        statusBar.text = '$(loading~spin) Codeep';
-        statusBar.tooltip = 'Connecting to Codeep CLI…';
-        statusBar.backgroundColor = undefined;
-        break;
-      case 'connected':
-        statusBar.text = s.model ? `$(circuit-board) Codeep · ${s.model}` : '$(circuit-board) Codeep';
-        statusBar.tooltip = new vscode.MarkdownString(
-          `Codeep CLI · **connected**${s.model ? ` · model \`${s.model}\`` : ''}\n\nClick to change model.`,
-        );
-        statusBar.command = 'codeep.selectModel';
-        statusBar.backgroundColor = undefined;
-        break;
-      case 'reconnecting':
-        statusBar.text = s.reconnect
-          ? `$(sync~spin) Codeep · Reconnect ${s.reconnect.attempt}/${s.reconnect.max}`
-          : '$(sync~spin) Codeep · Reconnecting';
-        statusBar.tooltip = s.reconnect
-          ? `Reconnecting in ${s.reconnect.delaySec}s (attempt ${s.reconnect.attempt}/${s.reconnect.max})`
-          : 'Reconnecting to Codeep CLI…';
-        statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        break;
-      case 'disconnected':
-        statusBar.text = '$(plug) Codeep · Off';
-        statusBar.tooltip = 'Codeep CLI disconnected — click to open chat';
-        statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        break;
-      case 'failed':
-        statusBar.text = '$(error) Codeep · Failed';
-        statusBar.tooltip = 'Codeep CLI reconnect failed — reload the window';
-        statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        break;
-    }
+  // `renderStatusBar` (from ./statusBarRenderer) is a pure function that
+  // returns text/tooltip/command/colour per state. This thin wrapper
+  // applies those fields to the live StatusBarItem.
+  const applyStatusBar = (s: ChatStatusState): void => {
+    const f = renderStatusBar(s);
+    statusBar.text = f.text;
+    statusBar.tooltip = f.tooltip;
+    statusBar.command = f.command;
+    statusBar.backgroundColor = f.backgroundColor;
   };
 
-  renderStatusBar(chatPanel.getStatusState());
-  context.subscriptions.push(chatPanel.onStatusChange(renderStatusBar));
+  applyStatusBar(chatPanel.getStatusState());
+  context.subscriptions.push(chatPanel.onStatusChange(applyStatusBar));
 
   // Command: pick provider + model from a quick-pick (wired to the status bar
   // when connected). Two-step: provider → model, with a free-text fallback for
@@ -182,7 +161,7 @@ export function activate(context: vscode.ExtensionContext) {
           placeHolder: provider.defaultModel || 'e.g. qwen3-coder-30b',
           value: provider.defaultModel || '',
           ignoreFocusOut: true,
-          validateInput: (v) => (v.trim() ? null : 'Enter a model id'),
+          validateInput: validateModelId,
         });
       } else {
         const CUSTOM = '__custom__';
@@ -205,7 +184,7 @@ export function activate(context: vscode.ExtensionContext) {
                 prompt: 'Model id',
                 value: provider.defaultModel || '',
                 ignoreFocusOut: true,
-                validateInput: (v) => (v.trim() ? null : 'Enter a model id'),
+                validateInput: validateModelId,
               })
             : modelPick.modelId;
       }
@@ -429,13 +408,7 @@ export function activate(context: vscode.ExtensionContext) {
         prompt: `Paste your ${pick.label} API key`,
         password: true,
         ignoreFocusOut: true,
-        validateInput: (v) => {
-          const t = v.trim();
-          if (!t) return 'Key is empty';
-          if (/\s/.test(t)) return 'Key contains whitespace — paste again';
-          if (t.length < 16) return 'Key looks too short — paste the full value';
-          return null;
-        },
+        validateInput: validateApiKey,
       });
       if (!key) return;
 
@@ -480,7 +453,7 @@ export function activate(context: vscode.ExtensionContext) {
       const name = await vscode.window.showInputBox({
         prompt: 'Server name (also used as the agent-side tool prefix: `<name>__<tool>`)',
         placeHolder: 'e.g. fs, gh, postgres',
-        validateInput: (v) => /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(v.trim()) ? null : 'Letters, digits, _ and - only; must start with a letter; max 32 chars',
+        validateInput: validateMcpServerName,
       });
       if (!name) return;
 
@@ -558,18 +531,23 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('codeep.skillsCreateBundle', async () => {
       const root = workspaceRoot();
       if (!root) { vscode.window.showWarningMessage('Codeep: open a workspace first.'); return; }
-      const name = await vscode.window.showInputBox({
+      const nameInput = await vscode.window.showInputBox({
         prompt: 'Skill bundle name (lowercase, hyphens allowed; this becomes the directory name)',
         placeHolder: 'e.g. deploy-staging, lint-fix, hotfix-flow',
-        validateInput: (v) => /^[a-z0-9][a-z0-9-]{0,40}$/.test(v.trim()) ? null : 'Lowercase letters / digits / hyphens; must start with a letter or digit; max 41 chars',
+        validateInput: validateSkillBundleName,
       });
-      if (!name) return;
-      const description = await vscode.window.showInputBox({
+      if (!nameInput) return;
+      // The validator tests the TRIMMED value, so consume the trimmed value
+      // too — otherwise " deploy " passes validation but creates a directory
+      // (and frontmatter name) with the surrounding whitespace baked in.
+      const name = nameInput.trim();
+      const descriptionInput = await vscode.window.showInputBox({
         prompt: 'One-sentence description (shown in the agent\'s catalog)',
         placeHolder: 'e.g. Deploy the current branch to staging via npm scripts',
-        validateInput: (v) => v.trim().length > 0 ? null : 'Description is required',
+        validateInput: (v) => validateRequired(v, 'Description'),
       });
-      if (!description) return;
+      if (!descriptionInput) return;
+      const description = descriptionInput.trim();
 
       const skillsDir = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.codeep', 'skills', name);
       const skillFile = vscode.Uri.joinPath(skillsDir, 'SKILL.md');

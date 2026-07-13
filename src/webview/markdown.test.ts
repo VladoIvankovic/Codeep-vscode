@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderMarkdown } from './markdown';
+import { _escapeHtmlForTest as escapeHtml, _inlineForTest as inline } from './markdown';
 
 // renderMarkdown turns assistant/user markdown into the HTML injected into the
 // chat webview. It's hand-rolled and security-sensitive (HTML escaping + a link
@@ -110,5 +111,74 @@ describe('renderMarkdown — block elements', () => {
     expect(out).toContain('<th style="text-align:left">a</th>');
     expect(out).toContain('<th style="text-align:right">b</th>');
     expect(out).toContain('<td style="text-align:left">1</td>');
+  });
+});
+
+describe('escapeHtml — internal helper', () => {
+  it('escapes &, <, >, ", \' in that order', () => {
+    expect(escapeHtml('<a href="x" data-y=\'z\'>b & c</a>'))
+      .toBe('&lt;a href=&quot;x&quot; data-y=&#39;z&#39;&gt;b &amp; c&lt;/a&gt;');
+  });
+
+  it('escapes every ampersand, including runs', () => {
+    expect(escapeHtml('a && b')).toBe('a &amp;&amp; b');
+  });
+
+  it('preserves other characters verbatim', () => {
+    expect(escapeHtml('hello world 123')).toBe('hello world 123');
+  });
+
+  it('returns empty for empty input', () => {
+    expect(escapeHtml('')).toBe('');
+  });
+
+  it('escapes a lone double-quote (regression for href breakout)', () => {
+    expect(escapeHtml('"')).toBe('&quot;');
+  });
+});
+
+describe('inline — internal helper', () => {
+  it('wraps backtick spans in <code>', () => {
+    expect(inline('use `foo` here')).toBe('use <code>foo</code> here');
+  });
+
+  it('wraps **double-asterisk** in <strong>', () => {
+    expect(inline('**bold**')).toBe('<strong>bold</strong>');
+  });
+
+  it('wraps *single-asterisk* in <em>', () => {
+    expect(inline('*italic*')).toBe('<em>italic</em>');
+  });
+
+  it('renders a safe http link as an anchor with noopener', () => {
+    expect(inline('[x](https://a.b)')).toBe('<a href="https://a.b" target="_blank" rel="noopener noreferrer">x</a>');
+  });
+
+  it('allows mailto: and vscode: schemes', () => {
+    expect(inline('[m](mailto:a@b.c)')).toContain('href="mailto:a@b.c"');
+    expect(inline('[c](vscode:foo)')).toContain('href="vscode:foo"');
+  });
+
+  it('strips javascript: scheme — no anchor, label only', () => {
+    const out = inline('[click](javascript:evil)');
+    expect(out).not.toContain('href');
+    expect(out).not.toContain('javascript:');
+    expect(out).toContain('click');
+  });
+
+  it('strips data: scheme', () => {
+    expect(inline('[y](data:text/html,<b>)')).toBe('y');
+  });
+
+  it('returns plain text unchanged when no markdown is present', () => {
+    expect(inline('just words')).toBe('just words');
+  });
+
+  it('applies all inline styles in one pass', () => {
+    const out = inline('**a** *b* `c` [d](https://e.f)');
+    expect(out).toContain('<strong>a</strong>');
+    expect(out).toContain('<em>b</em>');
+    expect(out).toContain('<code>c</code>');
+    expect(out).toContain('href="https://e.f"');
   });
 });
