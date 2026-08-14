@@ -8,11 +8,28 @@
   var btnNew = document.getElementById("btn-new");
   var btnSessions = document.getElementById("btn-sessions");
   var btnSettings = document.getElementById("btn-settings");
+  var btnAttach = document.getElementById("btn-attach");
+  var btnMode = document.getElementById("btn-mode");
   var sessionsPanelEl = document.getElementById("sessions-panel");
   var settingsPanelEl = document.getElementById("settings-panel");
   var statusEl = document.getElementById("status");
+  var modelBadgeEl = document.getElementById("model-badge");
   var agentStatusEl = document.getElementById("agent-status");
   var mentionPopup = document.getElementById("mention-popup");
+  var workspaceEl = document.getElementById("workspace");
+  var taskOverviewEl = document.getElementById("task-overview");
+  var taskTitleEl = document.getElementById("task-title");
+  var taskSubtitleEl = document.getElementById("task-subtitle");
+  var planHostEl = document.getElementById("plan-host");
+  var conversationSectionEl = document.getElementById("conversation-section");
+  var conversationToggleEl = document.getElementById("conversation-toggle");
+  var toolActivityEl = document.getElementById("tool-activity");
+  var activityListEl = document.getElementById("activity-list");
+  var activityCountEl = document.getElementById("activity-count");
+  var summaryActionsEl = document.getElementById("summary-actions");
+  var summaryChecksEl = document.getElementById("summary-checks");
+  var summaryNextEl = document.getElementById("summary-next");
+  var modeLabelEl = document.getElementById("mode-label");
   var scrollSentinel = document.createElement("div");
   scrollSentinel.style.cssText = "height:1px;flex-shrink:0;pointer-events:none;";
   messagesEl.appendChild(scrollSentinel);
@@ -211,6 +228,12 @@
     isStreaming: false,
     lastErrorEl: null,
     toolCallItems: /* @__PURE__ */ new Map(),
+    toolCallKinds: /* @__PURE__ */ new Map(),
+    runStats: {
+      actions: 0,
+      checksPassed: 0,
+      checksFailed: 0
+    },
     mention: null,
     mentionQueryId: 0,
     mentionDebounce: null
@@ -219,6 +242,7 @@
 
   // src/webview/messages.ts
   function appendMessage(role, text) {
+    document.getElementById("conversation-empty")?.remove();
     const div = document.createElement("div");
     div.className = `message ${role}`;
     const roleEl = document.createElement("div");
@@ -249,11 +273,7 @@
     agentStatusEl.innerHTML = "";
     const icon = document.createElement("span");
     icon.id = "agent-status-icon";
-    if (isThinking) {
-      icon.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
-    } else {
-      icon.textContent = "\u25B8";
-    }
+    icon.className = isThinking ? "codicon codicon-loading codicon-modifier-spin" : "codicon codicon-tools";
     const label = document.createElement("span");
     label.id = "agent-status-text";
     label.textContent = text;
@@ -265,49 +285,107 @@
     agentStatusEl.classList.remove("visible");
     agentStatusEl.innerHTML = "";
   }
-  function appendToolCall(text, toolCallId) {
+  var TOOL_KIND_ICON = {
+    read: "codicon-search",
+    search: "codicon-search",
+    edit: "codicon-edit",
+    write: "codicon-edit",
+    delete: "codicon-edit",
+    move: "codicon-edit",
+    execute: "codicon-terminal",
+    fetch: "codicon-globe",
+    think: "codicon-lightbulb"
+  };
+  function toolIconClass(kind, text) {
+    const mapped = kind ? TOOL_KIND_ICON[kind.toLowerCase()] : void 0;
+    if (mapped)
+      return mapped;
+    const value = text.toLowerCase();
+    if (/read|search|inspect|list/.test(value))
+      return "codicon-search";
+    if (/edit|write|patch|create/.test(value))
+      return "codicon-edit";
+    if (/command|terminal|run|test|build|lint/.test(value))
+      return "codicon-terminal";
+    return "codicon-tools";
+  }
+  function appendToolCall(text, toolCallId, kind) {
     if (!state.currentToolGroupEl) {
+      activityListEl.innerHTML = "";
+      toolActivityEl.classList.remove("is-empty");
       const group = document.createElement("div");
-      group.className = "tool-group collapsed";
-      const label = document.createElement("span");
-      label.className = "tool-group-label";
-      label.addEventListener("click", () => group.classList.toggle("collapsed"));
+      group.className = "tool-group";
+      const label2 = document.createElement("button");
+      label2.className = "tool-group-label";
+      label2.type = "button";
+      label2.setAttribute("aria-expanded", "true");
+      label2.addEventListener("click", () => {
+        const collapsed = group.classList.toggle("collapsed");
+        label2.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      });
+      const leadingIcon = document.createElement("span");
+      leadingIcon.className = "codicon codicon-run-all tool-group-icon";
+      leadingIcon.setAttribute("aria-hidden", "true");
       const statusSpan = document.createElement("span");
       statusSpan.className = "tool-group-status";
-      statusSpan.textContent = "Working...";
+      statusSpan.textContent = "Current run";
       const countSpan2 = document.createElement("span");
       countSpan2.className = "tool-group-count";
-      label.append(statusSpan, " ", countSpan2);
+      const chevron = document.createElement("span");
+      chevron.className = "codicon codicon-chevron-down tool-group-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      label2.append(leadingIcon, statusSpan, countSpan2, chevron);
       const items = document.createElement("div");
       items.className = "tool-group-items";
-      group.appendChild(label);
+      group.appendChild(label2);
       group.appendChild(items);
-      messagesEl.appendChild(group);
+      activityListEl.appendChild(group);
       state.currentToolGroupEl = group;
     }
     const item = document.createElement("div");
     item.className = "tool-item";
-    item.textContent = text;
-    if (toolCallId)
+    const icon = document.createElement("span");
+    icon.className = `codicon ${toolIconClass(kind, text)} tool-item-icon`;
+    const label = document.createElement("span");
+    label.className = "tool-item-label";
+    label.textContent = text;
+    item.append(icon, label);
+    if (toolCallId) {
       state.toolCallItems.set(toolCallId, item);
+      state.toolCallKinds.set(toolCallId, kind ?? "");
+    }
     state.currentToolGroupEl.querySelector(".tool-group-items")?.appendChild(item);
     const n = state.currentToolGroupEl.querySelectorAll(".tool-item").length;
     const countSpan = state.currentToolGroupEl.querySelector(".tool-group-count");
     if (countSpan)
-      countSpan.textContent = `(${n})`;
-    scrollToBottom(true);
+      countSpan.textContent = `${n}`;
+    activityCountEl.textContent = `${n}`;
+    state.runStats.actions = n;
+    updateRunSummary();
   }
   function updateToolCall(toolCallId, status) {
     const item = state.toolCallItems.get(toolCallId);
     if (!item)
       return;
     item.dataset.status = status;
-    if (status === "completed")
-      item.style.opacity = "0.5";
-    if (status === "failed")
-      item.style.color = "#f87171";
+    const icon = item.querySelector(".tool-item-icon");
+    if (status === "completed" && icon)
+      icon.className = "codicon codicon-check tool-item-icon";
+    if (status === "failed" && icon)
+      icon.className = "codicon codicon-error tool-item-icon";
     if (status === "completed" || status === "failed") {
+      if (!item.dataset.finalized) {
+        item.dataset.finalized = "true";
+        if (state.toolCallKinds.get(toolCallId) === "execute") {
+          if (status === "completed")
+            state.runStats.checksPassed += 1;
+          else
+            state.runStats.checksFailed += 1;
+        }
+        updateRunSummary();
+      }
       state.toolCallItems.delete(toolCallId);
+      state.toolCallKinds.delete(toolCallId);
     }
   }
   function finalizeToolGroup() {
@@ -315,9 +393,9 @@
       return;
     const statusSpan = state.currentToolGroupEl.querySelector(".tool-group-status");
     if (statusSpan) {
-      statusSpan.textContent = "\u2713 Done";
-      statusSpan.style.color = "#4ade80";
+      statusSpan.textContent = "Run complete";
     }
+    state.currentToolGroupEl.classList.add("is-complete");
   }
   function appendThought(text) {
     if (!state.currentThoughtEl) {
@@ -325,7 +403,7 @@
       card.className = "thought-card collapsed";
       const label = document.createElement("div");
       label.className = "thought-label";
-      label.textContent = "\u2726 Thinking";
+      label.innerHTML = '<span class="codicon codicon-lightbulb" aria-hidden="true"></span><span>Thinking</span>';
       label.addEventListener("click", () => card.classList.toggle("collapsed"));
       const body = document.createElement("div");
       body.className = "thought-body";
@@ -339,27 +417,31 @@
     scrollToBottom();
   }
   var PLAN_STATUS_ICON = {
-    pending: "\u25CB",
-    in_progress: "\u25D0",
-    completed: "\u25CF"
+    pending: "codicon-circle-large-outline",
+    in_progress: "codicon-loading codicon-modifier-spin",
+    completed: "codicon-check"
   };
   function renderPlan(entries) {
     if (!entries || entries.length === 0) {
       state.currentPlanEl?.remove();
       state.currentPlanEl = null;
+      if (!document.getElementById("plan-empty")) {
+        const empty = document.createElement("div");
+        empty.id = "plan-empty";
+        empty.className = "timeline-empty";
+        empty.innerHTML = '<span class="codicon codicon-list-tree" aria-hidden="true"></span><span>Plan steps will appear here as the agent works.</span>';
+        planHostEl.appendChild(empty);
+      }
       return;
     }
     if (!state.currentPlanEl) {
+      document.getElementById("plan-empty")?.remove();
       const card = document.createElement("div");
       card.className = "plan-card";
-      const label = document.createElement("div");
-      label.className = "plan-label";
-      label.textContent = "Plan";
-      card.appendChild(label);
       const list2 = document.createElement("div");
       list2.className = "plan-list";
       card.appendChild(list2);
-      messagesEl.appendChild(card);
+      planHostEl.appendChild(card);
       state.currentPlanEl = card;
     }
     const list = state.currentPlanEl.querySelector(".plan-list");
@@ -373,7 +455,7 @@
         row.classList.add("plan-high");
       const icon = document.createElement("span");
       icon.className = "plan-icon";
-      icon.textContent = PLAN_STATUS_ICON[e.status] ?? "\u25CB";
+      icon.classList.add("codicon", ...(PLAN_STATUS_ICON[e.status] ?? PLAN_STATUS_ICON.pending).split(" "));
       const text = document.createElement("span");
       text.className = "plan-text";
       text.textContent = e.content ?? "";
@@ -381,13 +463,70 @@
       row.appendChild(text);
       list.appendChild(row);
     });
-    scrollToBottom();
+    taskOverviewEl.classList.toggle("is-active", entries.some((e) => e.status === "in_progress"));
+  }
+  function updateRunSummary() {
+    summaryActionsEl.textContent = `${state.runStats.actions}`;
+    const checks = state.runStats.checksPassed + state.runStats.checksFailed;
+    if (checks === 0) {
+      summaryChecksEl.textContent = "Not run";
+      summaryChecksEl.className = "";
+    } else if (state.runStats.checksFailed > 0) {
+      summaryChecksEl.textContent = `${state.runStats.checksFailed} failed`;
+      summaryChecksEl.className = "summary-bad";
+    } else {
+      summaryChecksEl.textContent = `${state.runStats.checksPassed} passed`;
+      summaryChecksEl.className = "summary-good";
+    }
+  }
+  function beginTask(text) {
+    const firstLine = text.split(/\r?\n/).find((line) => line.trim())?.trim() ?? "New task";
+    taskTitleEl.textContent = firstLine.length > 92 ? `${firstLine.slice(0, 89)}...` : firstLine;
+    taskSubtitleEl.textContent = "Codeep is preparing the execution timeline.";
+    taskOverviewEl.classList.remove("is-ready", "is-complete");
+    taskOverviewEl.classList.add("is-active");
+    state.currentPlanEl?.remove();
+    state.currentPlanEl = null;
+    planHostEl.innerHTML = '<div id="plan-empty" class="timeline-empty is-active"><span class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></span><span>Building the plan...</span></div>';
+    activityListEl.innerHTML = '<div id="activity-empty" class="activity-empty">Waiting for the first tool call.</div>';
+    toolActivityEl.classList.add("is-empty");
+    activityCountEl.textContent = "0";
+    state.runStats.actions = 0;
+    state.runStats.checksPassed = 0;
+    state.runStats.checksFailed = 0;
+    state.toolCallKinds.clear();
+    summaryNextEl.textContent = "In progress";
+    updateRunSummary();
+  }
+  function completeTask() {
+    taskSubtitleEl.textContent = "Run complete. Review the result or continue with a follow-up.";
+    taskOverviewEl.classList.remove("is-active");
+    taskOverviewEl.classList.add("is-complete");
+    if (!state.currentPlanEl) {
+      planHostEl.innerHTML = '<div id="plan-empty" class="timeline-empty"><span class="codicon codicon-list-tree" aria-hidden="true"></span><span>No plan steps for this run.</span></div>';
+    }
+    summaryNextEl.textContent = state.runStats.checksFailed > 0 ? "Review checks" : "Ready for follow-up";
+  }
+  function resetWorkbench() {
+    taskTitleEl.textContent = "Ready for your next task";
+    taskSubtitleEl.textContent = "Describe the outcome and Codeep will build a live execution timeline.";
+    taskOverviewEl.className = "is-ready";
+    planHostEl.innerHTML = '<div id="plan-empty" class="timeline-empty"><span class="codicon codicon-list-tree" aria-hidden="true"></span><span>Plan steps will appear here as the agent works.</span></div>';
+    activityListEl.innerHTML = '<div id="activity-empty" class="activity-empty">File reads, edits and checks will be grouped here.</div>';
+    toolActivityEl.classList.add("is-empty");
+    activityCountEl.textContent = "0";
+    state.runStats.actions = 0;
+    state.runStats.checksPassed = 0;
+    state.runStats.checksFailed = 0;
+    summaryNextEl.textContent = "Send a task";
+    updateRunSummary();
   }
   function resetTurn() {
     state.currentAssistantEl = null;
     state.currentToolGroupEl = null;
     state.currentThoughtEl = null;
     state.toolCallItems.clear();
+    state.toolCallKinds.clear();
   }
 
   // src/webview/permission.ts
@@ -1045,7 +1184,7 @@
     sessionsPanelEl.style.display = "none";
     vscode.postMessage({ type: "newSession" });
   });
-  btnSettings.addEventListener("click", () => {
+  function toggleSettingsPanel() {
     if (settingsPanelEl.style.display !== "none") {
       settingsPanelEl.style.display = "none";
       return;
@@ -1053,6 +1192,11 @@
     sessionsPanelEl.style.display = "none";
     renderSettingsPanel();
     settingsPanelEl.style.display = "block";
+  }
+  btnSettings.addEventListener("click", toggleSettingsPanel);
+  btnMode.addEventListener("click", toggleSettingsPanel);
+  btnAttach.addEventListener("click", () => {
+    vscode.postMessage({ type: "runVsCodeCommand", command: "codeep.attachActiveFile" });
   });
   btnSessions.addEventListener("click", () => {
     if (sessionsPanelEl.style.display !== "none") {
@@ -1064,9 +1208,18 @@
     sessionsPanelEl.style.display = "block";
     vscode.postMessage({ type: "listSessions" });
   });
+  conversationToggleEl.addEventListener("click", () => {
+    const collapsed = conversationSectionEl.classList.toggle("is-collapsed");
+    conversationToggleEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  });
+  function setConnectionStatus(text) {
+    statusEl.textContent = text;
+    const normalized = text.toLowerCase();
+    statusEl.dataset.state = /not found|failed|error|disconnected|reload/.test(normalized) ? "warning" : normalized.includes("connect") || normalized.includes("initial") ? normalized.includes("connected") || normalized.includes("reconnected") ? "connected" : "connecting" : "neutral";
+  }
   function enterStreaming(placeholder) {
     state.isStreaming = true;
-    btnSend.style.display = "none";
+    btnSend.style.display = "flex";
     btnStop.style.display = "flex";
     inputEl.placeholder = placeholder;
   }
@@ -1081,6 +1234,7 @@
     switch (msg.type) {
       case "userMessage":
         clearAgentStatus();
+        beginTask(msg.text);
         appendMessage("user", msg.text);
         state.isStreaming = false;
         resetTurn();
@@ -1106,6 +1260,7 @@
       case "responseEnd":
         clearAgentStatus();
         finalizeToolGroup();
+        completeTask();
         resetTurn();
         exitStreaming();
         break;
@@ -1122,7 +1277,7 @@
           enterStreaming("Working...");
         dismissLastError();
         setAgentStatus(msg.text, false);
-        appendToolCall(msg.text, msg.toolCallId);
+        appendToolCall(msg.text, msg.toolCallId, msg.kind);
         break;
       case "toolCallUpdate":
         updateToolCall(msg.toolCallId, msg.status);
@@ -1148,7 +1303,7 @@
         exitStreaming();
         break;
       case "status":
-        statusEl.textContent = msg.text;
+        setConnectionStatus(msg.text);
         break;
       case "sessions":
         renderSessionsPanel(msg.sessions);
@@ -1160,9 +1315,8 @@
         const modelOpt = state.configOptions.find((o) => o.id === "model");
         if (modelOpt?.currentValue) {
           const modelName = modelOpt.options.find((o) => o.value === modelOpt.currentValue)?.name ?? modelOpt.currentValue.split("/").pop();
-          const currentStatus = statusEl.textContent || "";
-          const base = currentStatus.split(" \xB7 ")[0];
-          statusEl.textContent = base + " \xB7 " + modelName;
+          modelBadgeEl.textContent = modelName || "Default model";
+          modelBadgeEl.title = modelOpt.currentValue;
         }
         break;
       case "providers":
@@ -1173,6 +1327,7 @@
         break;
       case "modeChanged":
         state.currentMode = msg.modeId;
+        modeLabelEl.textContent = msg.modeId ? msg.modeId.charAt(0).toUpperCase() + msg.modeId.slice(1) : "Manual";
         if (settingsPanelEl.style.display !== "none")
           renderSettingsPanel();
         break;
@@ -1180,16 +1335,24 @@
         msg.messages.forEach(
           (m) => appendMessage(m.role === "user" ? "user" : "assistant", m.content)
         );
+        {
+          const lastUser = [...msg.messages].reverse().find((m) => m.role === "user");
+          if (lastUser?.content) {
+            beginTask(lastUser.content);
+            completeTask();
+          }
+        }
         scrollToBottom();
         break;
       case "clearChat":
-        messagesEl.innerHTML = "";
+        messagesEl.innerHTML = '<div id="conversation-empty" class="conversation-empty">Your conversation will stay here while the timeline tracks execution.</div>';
         messagesEl.appendChild(scrollSentinel);
         resetTurn();
         state.currentPlanEl = null;
         state.lastErrorEl = null;
         state.toolCallItems.clear();
         clearAgentStatus();
+        resetWorkbench();
         exitStreaming();
         sessionsPanelEl.style.display = "none";
         break;
@@ -1277,5 +1440,5 @@
     }
   });
   vscode.postMessage({ type: "ready" });
-  statusEl.textContent = "Connecting to Codeep CLI...";
+  setConnectionStatus("Connecting...");
 })();

@@ -1,3 +1,19 @@
+/* ==========================================================================
+   PART 1 — legacy component rules (settings, sessions, permissions, markdown).
+
+   This file has two layers. The "Codeep Agent Workbench" banner further down
+   starts PART 2, which re-declares 29 of the selectors below — body, #toolbar,
+   #messages, #input-area, #btn-send, .plan-*, .tool-* and friends. Same
+   specificity, so for any property PART 2 also sets, PART 2 wins and the
+   declaration here is dead.
+
+   Editing a shared property up here will therefore look like it does nothing.
+   Make shell/layout changes in PART 2. The rules that remain here are only
+   partially overlapped — each still supplies properties PART 2 leaves alone
+   (fonts, flex direction, overflow), so deleting one would break the layout.
+   The eight that were fully superseded have already been removed.
+   ========================================================================== */
+
 :root {
   /* Theme-adaptive surfaces: VS Code tokens with the prior dark-theme
      translucent values as fallbacks, so light themes stay readable instead
@@ -68,9 +84,6 @@ body {
   border-radius: 3px;
   font-size: 11px;
   cursor: pointer;
-}
-#btn-settings:hover, #btn-sessions:hover, #btn-new:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
 }
 
 #settings-panel {
@@ -526,9 +539,6 @@ body {
 .plan-pending     .plan-text { opacity: 0.7; }
 .plan-in_progress .plan-icon { color: var(--codeep-yellow); }
 .plan-in_progress .plan-text { color: var(--vscode-foreground); }
-.plan-completed   .plan-icon { color: var(--codeep-green); }
-.plan-completed   .plan-text { opacity: 0.55; text-decoration: line-through; }
-.plan-high        .plan-text { font-weight: 500; }
 
 .tool-group {
   font-size: 11px;
@@ -550,7 +560,6 @@ body {
   align-items: center;
   gap: 4px;
 }
-.tool-group-label:hover { opacity: 0.8; }
 
 .tool-group-count {
   color: var(--vscode-descriptionForeground);
@@ -704,12 +713,6 @@ body {
   overflow-y: auto;
   outline: none;
 }
-#input:focus {
-  border-color: var(--vscode-focusBorder);
-}
-#input[placeholder="Working..."] {
-  border-color: rgba(240,42,48,0.4);
-}
 
 #btn-send {
   background: #f02a30;
@@ -723,7 +726,6 @@ body {
   display: flex;
   align-items: center;
 }
-#btn-send:hover { background: #d92027; }
 #btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #btn-stop {
@@ -898,4 +900,715 @@ pre code { background: none; padding: 0; }
   line-height: 1.6;
   color: var(--vscode-foreground);
   flex-shrink: 0;
+}
+
+/* ==========================================================================
+   PART 2 — Codeep Agent Workbench.
+
+   The selectors below intentionally sit after the legacy component rules so
+   settings, permissions and markdown keep their behaviour while the shell is
+   re-composed into the selected agent-timeline design.
+
+   Everything shell-related belongs HERE, not in PART 1: where a selector
+   appears in both parts these rules are later and therefore win. See the
+   header at the top of the file.
+   ========================================================================== */
+
+:root {
+  --codeep-accent: #ff3b45;
+  --codeep-accent-soft: rgba(255, 59, 69, 0.1);
+  --codeep-accent-border: rgba(255, 59, 69, 0.35);
+  --codeep-success: var(--vscode-testing-iconPassed, #4ec96b);
+  --codeep-warning: var(--vscode-testing-iconQueued, #d8a84e);
+  --codeep-surface: color-mix(in srgb, var(--vscode-sideBar-background) 92%, var(--vscode-foreground) 8%);
+  --codeep-surface-raised: color-mix(in srgb, var(--vscode-sideBar-background) 86%, var(--vscode-foreground) 14%);
+  --codeep-muted: var(--vscode-descriptionForeground);
+}
+
+body {
+  background: var(--vscode-sideBar-background);
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#toolbar {
+  display: block;
+  padding: 12px 12px 9px;
+  border-bottom: 1px solid var(--codeep-border);
+  background: var(--vscode-sideBar-background);
+}
+
+#brand-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "brand model"
+    "status model";
+  align-items: center;
+  gap: 3px 8px;
+  min-width: 0;
+}
+
+#brand-lockup {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#brand-mark {
+  width: 24px;
+  height: 24px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+#brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#status {
+  grid-area: status;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--codeep-muted);
+  padding-left: 32px;
+}
+
+#status[data-state="connected"] { color: var(--codeep-success); }
+#status[data-state="connecting"] { color: var(--codeep-warning); }
+#status[data-state="warning"] { color: var(--vscode-errorForeground, #f26b70); }
+
+#model-badge {
+  grid-area: model;
+  justify-self: end;
+  max-width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--codeep-border-strong);
+  border-radius: 999px;
+  background: var(--codeep-surface);
+  color: var(--codeep-muted);
+  padding: 3px 7px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+#toolbar-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 10px;
+}
+
+#btn-settings,
+#btn-sessions,
+#btn-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--codeep-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+#btn-settings:hover,
+#btn-sessions:hover,
+#btn-new:hover {
+  background: var(--codeep-surface-raised);
+  border-color: var(--codeep-border);
+  color: var(--vscode-foreground);
+}
+
+#btn-settings:focus-visible,
+#btn-sessions:focus-visible,
+#btn-new:focus-visible,
+#conversation-toggle:focus-visible,
+.tool-group-label:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+#settings-panel,
+#sessions-panel {
+  flex: 0 0 auto;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  z-index: 3;
+}
+
+#workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-sideBar-background);
+}
+
+#task-overview {
+  padding: 14px 14px 13px;
+  border-bottom: 1px solid var(--codeep-border);
+  background: var(--vscode-sideBar-background);
+}
+
+#task-overview.is-active {
+  box-shadow: inset 2px 0 0 var(--codeep-accent);
+}
+
+#task-overview.is-complete {
+  box-shadow: inset 2px 0 0 var(--codeep-success);
+}
+
+.section-kicker {
+  color: var(--codeep-muted);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+#task-title {
+  margin: 5px 0 0;
+  color: var(--vscode-foreground);
+  font-size: 15px;
+  line-height: 1.32;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+#task-subtitle {
+  margin: 4px 0 0;
+  color: var(--codeep-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+#plan-host {
+  margin-top: 12px;
+}
+
+.timeline-empty,
+.activity-empty,
+.conversation-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  color: var(--codeep-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.timeline-empty .codicon,
+.activity-empty .codicon {
+  color: var(--codeep-accent);
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.plan-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+}
+
+.plan-list {
+  gap: 0;
+}
+
+.plan-item {
+  position: relative;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 36px;
+  padding: 3px 0 8px;
+}
+
+.plan-item:not(:last-child) {
+  border-left: 1px solid var(--codeep-border-strong);
+  margin-left: 6px;
+  padding-left: 13px;
+}
+
+.plan-item:not(:last-child) .plan-icon {
+  margin-left: -20px;
+}
+
+.plan-icon {
+  width: 13px;
+  flex: 0 0 13px;
+  color: var(--codeep-muted);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.plan-text {
+  padding-top: 1px;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.plan-pending .plan-icon,
+.plan-pending .plan-text { opacity: 0.52; }
+.plan-in_progress .plan-icon,
+.plan-in_progress .plan-text { color: var(--codeep-accent); opacity: 1; }
+.plan-completed .plan-icon { color: var(--codeep-success); opacity: 1; }
+.plan-completed .plan-text { opacity: 0.72; text-decoration: none; }
+.plan-high .plan-text { font-weight: 600; }
+
+.workbench-section {
+  border-bottom: 1px solid var(--codeep-border);
+  background: var(--vscode-sideBar-background);
+}
+
+.section-toggle,
+.section-heading {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  color: var(--codeep-muted);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.section-toggle {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.section-toggle > span:first-child,
+.section-heading > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.section-toggle:hover {
+  background: var(--codeep-surface);
+  color: var(--vscode-foreground);
+}
+
+.section-chevron {
+  transition: transform 160ms ease;
+}
+
+#conversation-section.is-collapsed .section-chevron {
+  transform: rotate(-90deg);
+}
+
+#conversation-section.is-collapsed #messages {
+  display: none;
+}
+
+#messages {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0 12px 12px;
+  gap: 9px;
+  scroll-padding-bottom: 0;
+}
+
+.conversation-empty {
+  padding: 2px 0 1px;
+}
+
+.message {
+  gap: 4px;
+}
+
+.message-role {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.message-content {
+  font-size: 11px;
+  line-height: 1.52;
+}
+
+.message.user .message-content,
+.message.assistant .message-content {
+  padding: 7px 8px;
+  border: 1px solid var(--codeep-border);
+  border-radius: 6px;
+  background: var(--codeep-surface);
+}
+
+.message.user .message-content {
+  border-color: var(--vscode-input-border, var(--codeep-border));
+}
+
+.message.assistant .message-content {
+  border-color: var(--codeep-accent-border);
+  background: var(--codeep-accent-soft);
+}
+
+.thought-card {
+  padding: 6px 8px;
+  border: 1px solid var(--codeep-border);
+  border-left: 2px solid var(--vscode-charts-purple, #a88bd8);
+  border-radius: 5px;
+  background: var(--codeep-surface);
+}
+
+.thought-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#tool-activity .section-heading {
+  border-bottom: 1px solid var(--codeep-border);
+}
+
+#activity-count {
+  min-width: 20px;
+  padding: 2px 6px;
+  border: 1px solid var(--codeep-border);
+  border-radius: 999px;
+  color: var(--codeep-muted);
+  text-align: center;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+#activity-list {
+  padding: 9px 12px 11px;
+}
+
+.tool-group {
+  padding: 0;
+  border: 1px solid var(--codeep-border);
+  border-radius: 6px;
+  background: var(--codeep-surface);
+  color: var(--codeep-muted);
+  overflow: hidden;
+}
+
+.tool-group-label {
+  width: 100%;
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+
+.tool-group-label:hover {
+  background: var(--codeep-surface-raised);
+  opacity: 1;
+}
+
+.tool-group-icon { color: var(--codeep-accent); }
+.tool-group.is-complete .tool-group-icon { color: var(--codeep-success); }
+.tool-group-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-group-count {
+  min-width: 18px;
+  color: var(--codeep-muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  text-align: right;
+}
+.tool-group-chevron { color: var(--codeep-muted); transition: transform 160ms ease; }
+.tool-group.collapsed .tool-group-chevron { transform: rotate(-90deg); }
+
+.tool-group-items {
+  margin: 0;
+  max-height: 180px;
+  gap: 0;
+  border-top: 1px solid var(--codeep-border);
+  overflow-y: auto;
+}
+
+.tool-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  min-height: 28px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--codeep-border);
+  opacity: 1;
+  color: var(--codeep-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.tool-item:last-child { border-bottom: 0; }
+.tool-item-icon { color: var(--codeep-accent); margin-top: 1px; }
+.tool-item[data-status="completed"] .tool-item-icon { color: var(--codeep-success); }
+.tool-item[data-status="failed"] .tool-item-icon { color: var(--vscode-errorForeground, #f26b70); }
+.tool-item-label { min-width: 0; overflow-wrap: anywhere; }
+
+#run-summary {
+  padding: 11px 12px 13px;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.summary-grid > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: baseline;
+  gap: 8px;
+}
+
+.summary-grid dt,
+.summary-grid dd {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.summary-grid dt { color: var(--codeep-muted); }
+.summary-grid dd {
+  max-width: 150px;
+  color: var(--vscode-foreground);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.summary-grid dd.summary-good { color: var(--codeep-success); }
+.summary-grid dd.summary-bad { color: var(--vscode-errorForeground, #f26b70); }
+
+#agent-status {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--codeep-accent-border);
+  background: var(--codeep-accent-soft);
+}
+
+#agent-status-icon {
+  color: var(--codeep-accent);
+  font-size: 12px;
+}
+
+#input-area {
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--codeep-border-strong);
+  background: var(--vscode-sideBar-background);
+}
+
+#composer-shell {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--vscode-input-border, var(--codeep-border-strong));
+  border-radius: 6px;
+  background: var(--vscode-input-background);
+}
+
+#composer-shell:focus-within {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+#input {
+  width: 100%;
+  min-height: 34px;
+  max-height: 120px;
+  padding: 7px 8px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+#input:focus { border-color: transparent; }
+#input[placeholder="Working..."] { border-color: transparent; }
+#input:placeholder-shown { overflow-y: hidden; }
+
+#composer-footer {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 5px;
+}
+
+#composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+#btn-attach,
+#btn-mode {
+  min-width: 24px;
+  height: 21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--codeep-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9px;
+}
+
+#btn-attach:hover,
+#btn-mode:hover {
+  border-color: var(--codeep-border);
+  background: var(--codeep-surface-raised);
+  color: var(--vscode-foreground);
+}
+
+#btn-attach:focus-visible,
+#btn-mode:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+#composer-meta {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--codeep-muted);
+  font-size: 8px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#btn-send,
+#btn-stop {
+  align-self: stretch;
+  justify-content: center;
+  width: 38px;
+  height: auto;
+  min-height: 45px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 15px;
+}
+
+#btn-send {
+  background: var(--codeep-accent);
+  color: #fff;
+}
+
+#btn-send:hover { background: #e52f39; }
+
+#btn-stop {
+  border-color: var(--codeep-accent-border);
+  background: var(--codeep-accent-soft);
+  color: var(--codeep-accent);
+}
+
+@media (max-width: 300px) {
+  #toolbar { padding-inline: 9px; }
+  #brand-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "status"
+      "model";
+  }
+  #model-badge {
+    justify-self: start;
+    max-width: 100%;
+    margin: 4px 0 0 32px;
+  }
+  #toolbar-buttons { margin-top: 8px; }
+  #btn-settings,
+  #btn-sessions,
+  #btn-new { padding-inline: 3px; }
+  #task-overview { padding-inline: 11px; }
+  .section-toggle,
+  .section-heading,
+  #activity-list,
+  #run-summary,
+  #messages { padding-inline: 10px; }
+  #composer-meta,
+  #mode-label { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

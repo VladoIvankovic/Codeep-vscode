@@ -17,6 +17,12 @@ export const state = {
   lastErrorEl: null as HTMLElement | null,
 
   toolCallItems: new Map<string, HTMLElement>(),
+  toolCallKinds: new Map<string, string>(),
+  runStats: {
+    actions: 0,
+    checksPassed: 0,
+    checksFailed: 0,
+  },
 
   mention: null as MentionState | null,
   mentionQueryId: 0,

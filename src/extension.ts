@@ -117,7 +117,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Command: pick provider + model from a quick-pick (wired to the status bar
   // when connected). Two-step: provider → model, with a free-text fallback for
-  // providers whose model list is dynamic (OpenRouter, Ollama, custom endpoints)
+  // providers whose model list is dynamic (OpenRouter, ModelScope, Ollama,
+  // custom endpoints)
   // or when an older CLI doesn't report models.
   context.subscriptions.push(
     vscode.commands.registerCommand('codeep.selectModel', async () => {

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'crypto';
 import { AcpClient } from './acpClient';
 import { showProposedChange, synthesizeEditedContent, trackPendingPermission, clearPendingPermissionForUri } from './diffPreview';
 
@@ -498,7 +499,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     });
 
     this.client.on('toolCall', (params: any) => {
-      this.view?.webview.postMessage({ type: 'toolCall', text: params.title ?? 'Working...', toolCallId: params.toolCallId });
+      this.view?.webview.postMessage({ type: 'toolCall', text: params.title ?? 'Working...', kind: params.kind, toolCallId: params.toolCallId });
     });
 
     this.client.on('toolCallUpdate', (params: any) => {
@@ -974,35 +975,101 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'chat.css')
     );
-    const nonce = Math.random().toString(36).slice(2);
+    const codiconsUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'codicon.css')
+    );
+    const logoUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icon-sidebar.svg')
+    );
+    // The nonce is the only thing the CSP lets execute a script in this
+    // webview, so it comes from the CSPRNG rather than Math.random().
+    const nonce = randomBytes(16).toString('base64');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource}; font-src ${cspSource}; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <link rel="stylesheet" href="${cssUri}">
+  <link rel="stylesheet" href="${codiconsUri}">
   <title>Codeep</title>
 </head>
 <body>
   <div id="toolbar">
-    <span id="status">Initializing...</span>
+    <div id="brand-row">
+      <div id="brand-lockup">
+        <img id="brand-mark" src="${logoUri}" alt="">
+        <span id="brand-name">Codeep</span>
+      </div>
+      <span id="status">Initializing...</span>
+      <span id="model-badge" title="Current model">Default model</span>
+    </div>
     <div id="toolbar-buttons">
-      <button id="btn-settings">Settings</button>
-      <button id="btn-sessions">Sessions</button>
-      <button id="btn-new">New</button>
+      <button id="btn-sessions"><span class="codicon codicon-history" aria-hidden="true"></span><span>Sessions</span></button>
+      <button id="btn-new"><span class="codicon codicon-add" aria-hidden="true"></span><span>New</span></button>
+      <button id="btn-settings"><span class="codicon codicon-settings-gear" aria-hidden="true"></span><span>Settings</span></button>
     </div>
   </div>
   <div id="settings-panel" style="display:none"></div>
   <div id="sessions-panel" style="display:none"></div>
-  <div id="messages"></div>
-  <div id="agent-status"></div>
+  <main id="workspace">
+    <section id="task-overview" class="is-ready" aria-labelledby="task-title">
+      <div class="section-kicker">Active task</div>
+      <h1 id="task-title">Ready for your next task</h1>
+      <p id="task-subtitle">Describe the outcome and Codeep will build a live execution timeline.</p>
+      <div id="plan-host">
+        <div id="plan-empty" class="timeline-empty">
+          <span class="codicon codicon-list-tree" aria-hidden="true"></span>
+          <span>Plan steps will appear here as the agent works.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="conversation-section" class="workbench-section">
+      <button id="conversation-toggle" class="section-toggle" type="button" aria-expanded="true">
+        <span><span class="codicon codicon-comment-discussion" aria-hidden="true"></span> Conversation</span>
+        <span class="codicon codicon-chevron-down section-chevron" aria-hidden="true"></span>
+      </button>
+      <div id="messages">
+        <div id="conversation-empty" class="conversation-empty">Your conversation will stay here while the timeline tracks execution.</div>
+      </div>
+    </section>
+
+    <section id="tool-activity" class="workbench-section is-empty" aria-labelledby="tool-activity-title">
+      <div class="section-heading">
+        <span id="tool-activity-title"><span class="codicon codicon-tools" aria-hidden="true"></span> Recent tool activity</span>
+        <span id="activity-count">0</span>
+      </div>
+      <div id="activity-list">
+        <div id="activity-empty" class="activity-empty">File reads, edits and checks will be grouped here.</div>
+      </div>
+    </section>
+
+    <section id="run-summary" class="workbench-section" aria-labelledby="run-summary-title">
+      <div id="run-summary-title" class="section-kicker">Run summary</div>
+      <dl class="summary-grid">
+        <div><dt>Actions</dt><dd id="summary-actions">0</dd></div>
+        <div><dt>Checks</dt><dd id="summary-checks">Not run</dd></div>
+        <div><dt>Next</dt><dd id="summary-next">Send a task</dd></div>
+      </dl>
+    </section>
+  </main>
+  <div id="agent-status" role="status" aria-live="polite"></div>
   <div id="input-area">
     <div id="mention-popup" style="display:none"></div>
-    <textarea id="input" placeholder="Ask Codeep anything (type @ to attach a file)" rows="1"></textarea>
-    <button id="btn-send">↑</button>
-    <button id="btn-stop" style="display:none">■</button>
+    <div id="composer-shell">
+      <textarea id="input" aria-label="Message to Codeep" placeholder="Ask Codeep anything (type @ to attach a file)" rows="1"></textarea>
+      <div id="composer-footer">
+        <div id="composer-actions">
+          <button id="btn-attach" type="button" title="Attach active file" aria-label="Attach active file"><span class="codicon codicon-files" aria-hidden="true"></span><span class="sr-only">Attach active file</span></button>
+          <button id="btn-mode" type="button" title="Open mode settings" aria-label="Open mode settings"><span class="codicon codicon-list-tree" aria-hidden="true"></span><span id="mode-label">Manual</span></button>
+        </div>
+        <div id="composer-meta">Enter to send · Shift+Enter for a new line</div>
+      </div>
+    </div>
+    <button id="btn-send" title="Send" aria-label="Send"><span class="codicon codicon-arrow-up" aria-hidden="true"></span><span class="sr-only">Send</span></button>
+    <button id="btn-stop" title="Stop" aria-label="Stop" style="display:none"><span class="codicon codicon-debug-stop" aria-hidden="true"></span><span class="sr-only">Stop</span></button>
   </div>
   <script nonce="${nonce}" src="${jsUri}"></script>
 </body>

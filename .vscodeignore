@@ -2,7 +2,10 @@
 # overrides for things that must never ship regardless.
 
 src/**
+scripts/**
 node_modules/**
+.codex-audit/**
+design-qa.md
 **/*.map
 **/*.ts
 

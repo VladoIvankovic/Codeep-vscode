@@ -4,6 +4,66 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.8.0] — 2026-08-14
+
+> The sidebar is rebuilt as an **Agent Timeline**: the active task and its live plan on top, the conversation collapsible underneath, grouped tool activity, and a run summary (actions / checks / next step). Icons now come from VS Code's own codicon set instead of unicode glyphs, and the view is renamed "Chat" → "Agent Timeline" to match what it actually shows.
+
+### Changed
+
+- **Agent Timeline workbench.** The panel is no longer a plain message list. It
+  now leads with the active task (title, subtitle, live plan), keeps the
+  conversation in a collapsible section below it, groups the run's tool calls
+  under "Recent tool activity" with a count and per-run collapse, and closes
+  with a "Run summary" strip — actions taken, checks passed/failed, and the
+  suggested next step. The composer moved into its own shell with attach and
+  mode controls.
+- **View renamed "Chat" → "Agent Timeline".** The view id (`codeep.chat`) is
+  unchanged, so commands, keybindings and saved layouts keep working.
+- **Real icons via `@vscode/codicons`.** Tool rows, plan steps, status and the
+  toolbar buttons use the codicon font instead of unicode glyphs, so they match
+  the editor at every theme and zoom level. `npm run build:webview` copies the
+  font and stylesheet into `media/` (`scripts/copy-codicons.mjs`), and the
+  webview CSP now allows `img-src`/`font-src` from the extension origin.
+
+### Fixed
+
+- **The plan panel no longer spins forever.** `beginTask()` puts a spinning
+  "Building the plan..." placeholder in the plan area, but only a `plan`
+  notification cleared it — so any prompt the agent answered without a plan
+  ended on a permanent spinner, as did *every* restored transcript (session
+  load and window reload both replay a task and complete it immediately).
+  Completing a run without a plan now shows "No plan steps for this run."
+- **Tool icons follow the ACP tool kind, not the tool's title.** The icon was
+  picked by substring-matching the title with the read/search branch first, so
+  "Edit src/webview/list.ts" and "Write README.md" drew a magnifying glass, and
+  the `execute` kind wasn't recognised at all. The kind is now mapped directly
+  (read/search, edit/write/delete/move, execute, fetch, think) and the title
+  regex is only a fallback for CLIs that don't send one.
+- **"Checks" in the run summary counts commands only.** Any tool call whose
+  *title* matched `test|check|lint|build|verify|command` was counted, so simply
+  reading `chatPanel.test.ts` scored a check — and a failed read painted the
+  summary red. Only `execute` tool calls count now.
+- **~267 KB of dead payload dropped from the .vsix.** `media/Screenshot-1.png`
+  and `Screenshot-2.png` were still packaged although nothing references them.
+
+### Security
+
+- **The webview CSP nonce now comes from the CSPRNG.** It was
+  `Math.random().toString(36)`. Not exploitable — every value interpolated into
+  the page is an extension-controlled webview URI — but the nonce is the only
+  thing that lets a script run in that document, and this release materially
+  grows the webview's DOM surface. It's `crypto.randomBytes(16)` now.
+
+### Internal
+
+- **The release workflow asserts the tag matches `package.json`.** `vsce`
+  packages whatever `package.json` says regardless of the `--out` filename, so
+  a mismatched tag would have shipped the previous version's bits and then been
+  rejected by the Marketplace as a duplicate. It now fails the job instead,
+  mirroring the CLI's `release-binaries.yml`.
+- Local audit / design-QA scratch (`.codex-audit/`, `design-qa.md`) is
+  git-ignored, not just `.vscodeignore`d.
+
 ## [2.7.0] — 2026-07-13
 
 > Compatibility sync with CLI 2.15.0. No extension behaviour changes — the extension already speaks ACP to the CLI, so the CLI's new cross-tool features (`AGENTS.md` rules, `.mcp.json`, cross-device `/cloud` resume) are picked up automatically once the user runs the matching CLI. This release just bumps the version and documents the pairing.

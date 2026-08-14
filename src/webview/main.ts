@@ -4,14 +4,20 @@
 
 import {
   agentStatusEl,
+  btnAttach,
+  btnMode,
   btnNew,
   btnSend,
   btnSessions,
   btnSettings,
   btnStop,
+  conversationSectionEl,
+  conversationToggleEl,
   inputEl,
   messagesEl,
   mentionPopup,
+  modeLabelEl,
+  modelBadgeEl,
   scrollSentinel,
   scrollToBottom,
   sessionsPanelEl,
@@ -23,10 +29,13 @@ import {
   appendMessage,
   appendThought,
   appendToolCall,
+  beginTask,
   clearAgentStatus,
+  completeTask,
   dismissLastError,
   finalizeToolGroup,
   renderPlan,
+  resetWorkbench,
   resetTurn,
   setAgentStatus,
   updateToolCall,
@@ -146,7 +155,7 @@ btnNew.addEventListener('click', () => {
   vscode.postMessage({ type: 'newSession' });
 });
 
-btnSettings.addEventListener('click', () => {
+function toggleSettingsPanel(): void {
   if (settingsPanelEl.style.display !== 'none') {
     settingsPanelEl.style.display = 'none';
     return;
@@ -154,6 +163,12 @@ btnSettings.addEventListener('click', () => {
   sessionsPanelEl.style.display = 'none';
   renderSettingsPanel();
   settingsPanelEl.style.display = 'block';
+}
+
+btnSettings.addEventListener('click', toggleSettingsPanel);
+btnMode.addEventListener('click', toggleSettingsPanel);
+btnAttach.addEventListener('click', () => {
+  vscode.postMessage({ type: 'runVsCodeCommand', command: 'codeep.attachActiveFile' });
 });
 
 btnSessions.addEventListener('click', () => {
@@ -167,11 +182,26 @@ btnSessions.addEventListener('click', () => {
   vscode.postMessage({ type: 'listSessions' });
 });
 
+conversationToggleEl.addEventListener('click', () => {
+  const collapsed = conversationSectionEl.classList.toggle('is-collapsed');
+  conversationToggleEl.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+});
+
+function setConnectionStatus(text: string): void {
+  statusEl.textContent = text;
+  const normalized = text.toLowerCase();
+  statusEl.dataset.state = /not found|failed|error|disconnected|reload/.test(normalized)
+    ? 'warning'
+    : normalized.includes('connect') || normalized.includes('initial')
+      ? normalized.includes('connected') || normalized.includes('reconnected') ? 'connected' : 'connecting'
+      : 'neutral';
+}
+
 // ── Streaming UI helpers ──────────────────────────────────────────────────────
 
 function enterStreaming(placeholder: string): void {
   state.isStreaming = true;
-  btnSend.style.display = 'none';
+  btnSend.style.display = 'flex';
   btnStop.style.display = 'flex';
   inputEl.placeholder = placeholder;
 }
@@ -191,6 +221,7 @@ window.addEventListener('message', (event: MessageEvent) => {
   switch (msg.type) {
     case 'userMessage':
       clearAgentStatus();
+      beginTask(msg.text);
       appendMessage('user', msg.text);
       state.isStreaming = false;
       resetTurn();
@@ -216,6 +247,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'responseEnd':
       clearAgentStatus();
       finalizeToolGroup();
+      completeTask();
       resetTurn();
       exitStreaming();
       break;
@@ -234,7 +266,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       if (!state.isStreaming) enterStreaming('Working...');
       dismissLastError();
       setAgentStatus(msg.text, false);
-      appendToolCall(msg.text, msg.toolCallId);
+      appendToolCall(msg.text, msg.toolCallId, msg.kind);
       break;
 
     case 'toolCallUpdate':
@@ -267,7 +299,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       break;
 
     case 'status':
-      statusEl.textContent = msg.text;
+      setConnectionStatus(msg.text);
       break;
 
     case 'sessions':
@@ -277,15 +309,14 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'configOptions':
       state.configOptions = msg.configOptions || [];
       if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
-      // Surface current model in the status bar
+      // Surface current model in the compact workbench header.
       const modelOpt = state.configOptions.find((o) => o.id === 'model');
       if (modelOpt?.currentValue) {
         const modelName =
           modelOpt.options.find((o) => o.value === modelOpt.currentValue)?.name
           ?? modelOpt.currentValue.split('/').pop();
-        const currentStatus = statusEl.textContent || '';
-        const base = currentStatus.split(' · ')[0];
-        statusEl.textContent = base + ' · ' + modelName;
+        modelBadgeEl.textContent = modelName || 'Default model';
+        modelBadgeEl.title = modelOpt.currentValue;
       }
       break;
 
@@ -297,6 +328,9 @@ window.addEventListener('message', (event: MessageEvent) => {
 
     case 'modeChanged':
       state.currentMode = msg.modeId;
+      modeLabelEl.textContent = msg.modeId
+        ? msg.modeId.charAt(0).toUpperCase() + msg.modeId.slice(1)
+        : 'Manual';
       if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
       break;
 
@@ -304,17 +338,25 @@ window.addEventListener('message', (event: MessageEvent) => {
       msg.messages.forEach((m: { role: string; content: string }) =>
         appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content),
       );
+      {
+        const lastUser = [...msg.messages].reverse().find((m: { role: string; content: string }) => m.role === 'user');
+        if (lastUser?.content) {
+          beginTask(lastUser.content);
+          completeTask();
+        }
+      }
       scrollToBottom();
       break;
 
     case 'clearChat':
-      messagesEl.innerHTML = '';
+      messagesEl.innerHTML = '<div id="conversation-empty" class="conversation-empty">Your conversation will stay here while the timeline tracks execution.</div>';
       messagesEl.appendChild(scrollSentinel);
       resetTurn();
       state.currentPlanEl = null;
       state.lastErrorEl = null;
       state.toolCallItems.clear();
       clearAgentStatus();
+      resetWorkbench();
       exitStreaming();
       sessionsPanelEl.style.display = 'none';
       break;
@@ -414,4 +456,4 @@ settingsPanelEl.addEventListener('click', (e) => {
 
 // Notify extension that webview is ready
 vscode.postMessage({ type: 'ready' });
-statusEl.textContent = 'Connecting to Codeep CLI...';
+setConnectionStatus('Connecting...');

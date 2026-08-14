@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.vsix
 .DS_Store
+
+# Local audit / design-QA scratch. .vscodeignore keeps these out of the .vsix;
+# this keeps them out of the repo.
+.codex-audit/
+design-qa.md

@@ -4,9 +4,13 @@ AI coding assistant sidebar for VS Code — powered by the [Codeep CLI](https://
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/VladoIvankovic.codeep?label=VS%20Code%20Marketplace&color=0065a9)](https://marketplace.visualstudio.com/items?itemName=VladoIvankovic.codeep)
 
-![Codeep chat sidebar](media/Screenshot-1.png)
+<p align="center">
+  <img src="https://codeep.dev/img/showcase/vscode.png" alt="Codeep VS Code agent timeline with active task, recent tool activity, and run summary" width="410">
+</p>
 
-![Codeep settings panel](media/Screenshot-2.png)
+The redesigned sidebar keeps the full run visible: active task, Plan → Read →
+Edit → Verify → Summary, recent tools, checks, and the next step. See the
+[complete VS Code guide](https://codeep.dev/docs/vscode).
 
 ## Requirements
 

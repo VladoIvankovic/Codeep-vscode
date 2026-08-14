@@ -49,6 +49,23 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
+      - name: Verify tag matches package.json version
+        # Passed via env, not interpolated into the script body: on the
+        # workflow_dispatch path these derive from user input, and this job holds
+        # contents:write plus VSCE_PAT.
+        env:
+          TAG_VERSION: ${{ steps.ver.outputs.version }}
+          TAG_NAME: ${{ steps.ver.outputs.tag }}
+        run: |
+          # vsce packages whatever package.json says, regardless of --out. A tag
+          # that disagrees would ship the previous version's bits and then get
+          # rejected by the Marketplace as a duplicate — fail here instead.
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG" ]; then
+            echo "::error::Tag $TAG_NAME does not match package.json version $PKG. Aborting release."
+            exit 1
+          fi
+
       # `npm install` (not `npm ci`): esbuild's per-platform optional deps make
       # a macOS-generated lockfile fail `npm ci` on Linux (EBADPLATFORM). install
       # skips platform-mismatched optionals.
