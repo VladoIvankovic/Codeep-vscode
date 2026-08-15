@@ -101,7 +101,30 @@ jobs:
           fi
           cat release-notes.md
 
+      # Makes re-tagging safe. The Marketplace refuses a duplicate version, so
+      # without this a tag for something already published fails the whole run —
+      # which is what stopped v2.7.0 (published by hand, never tagged) from
+      # being backfilled. Query first, skip the publish, still cut the release.
+      - name: Check whether this version is already on the Marketplace
+        id: published
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          versions=$(curl -sS -X POST \
+            'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json;api-version=3.0-preview.1' \
+            -d '{"filters":[{"criteria":[{"filterType":7,"value":"VladoIvankovic.codeep"}]}],"flags":16}' \
+            | tr ',' '\n' | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || true)
+          if printf '%s\n' "$versions" | grep -qx "$VERSION"; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$VERSION is already on the Marketplace — skipping publish, still creating the GitHub Release."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to VS Code Marketplace
+        if: steps.published.outputs.already != 'true'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx vsce publish --packagePath "codeep-${{ steps.ver.outputs.version }}.vsix"
