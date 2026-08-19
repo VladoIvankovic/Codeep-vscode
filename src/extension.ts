@@ -9,6 +9,7 @@ import { registerSessionsTree } from './sessionsTree';
 import { registerChatParticipant } from './chatParticipant';
 import { registerCodeepTools } from './codeepTools';
 import { registerProfileCommands } from './profile';
+import { registerPersonalityCommands } from './personalityCommands';
 import { renderStatusBar } from './statusBarRenderer';
 import {
   validateMcpServerName,
@@ -224,6 +225,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Profile commands: edit ~/.codeep/profile.md (global) and the project one,
   // plus the auto-learn toggle. The CLI/ACP agent reads these files on every run.
   registerProfileCommands(context, chatPanel);
+  registerPersonalityCommands(context, chatPanel);
 
   // Command: send selected code to chat
   context.subscriptions.push(

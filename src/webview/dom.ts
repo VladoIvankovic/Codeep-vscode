@@ -9,6 +9,7 @@ export const btnStop = document.getElementById('btn-stop') as HTMLButtonElement;
 export const btnNew = document.getElementById('btn-new') as HTMLButtonElement;
 export const btnSessions = document.getElementById('btn-sessions') as HTMLButtonElement;
 export const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement;
+export const btnPersonality = document.getElementById('btn-personality') as HTMLButtonElement;
 export const btnAttach = document.getElementById('btn-attach') as HTMLButtonElement;
 export const btnMode = document.getElementById('btn-mode') as HTMLButtonElement;
 export const sessionsPanelEl = document.getElementById('sessions-panel') as HTMLDivElement;
@@ -31,6 +32,7 @@ export const summaryActionsEl = document.getElementById('summary-actions') as HT
 export const summaryChecksEl = document.getElementById('summary-checks') as HTMLElement;
 export const summaryNextEl = document.getElementById('summary-next') as HTMLElement;
 export const modeLabelEl = document.getElementById('mode-label') as HTMLSpanElement;
+export const personalityLabelEl = document.getElementById('personality-label') as HTMLSpanElement;
 
 // Scroll sentinel — always the last child of messagesEl. scrollIntoView on it
 // is more reliable than scrollTop = scrollHeight because the browser

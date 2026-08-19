@@ -21,6 +21,21 @@ export interface ProviderEntry {
   subscribeUrl?: string;
 }
 
+export interface PersonalityEntry {
+  name: string;
+  displayName: string;
+  description: string;
+  source: 'builtin' | 'global' | 'project';
+  model: string;
+  tools: Array<'Files' | 'Terminal' | 'Tests' | 'Git' | 'Web' | 'MCP'>;
+  scope: 'All projects' | 'Selected projects' | 'Personal mode only';
+  projects: string[];
+  structured: boolean;
+  restrictTools: boolean;
+  available: boolean;
+  filePath?: string;
+}
+
 export interface PlanEntry {
   id: string;
   content: string;

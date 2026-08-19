@@ -1,4 +1,4 @@
-import type { ConfigOption, MentionState, ProviderEntry } from './types';
+import type { ConfigOption, MentionState, PersonalityEntry, ProviderEntry } from './types';
 
 // Shared mutable state for the webview. We keep it in a single object so
 // modules can read/write without each importing live ES module bindings —
@@ -8,6 +8,11 @@ export const state = {
   currentMode: 'manual',
   providers: [] as ProviderEntry[],
   providersUnavailable: false,
+  personalities: [] as PersonalityEntry[],
+  activePersonality: null as string | null,
+  personalitiesLoaded: false,
+  personalitySource: 'files' as 'files' | 'rpc',
+  personalityError: '',
 
   currentAssistantEl: null as HTMLElement | null,
   currentToolGroupEl: null as HTMLElement | null,

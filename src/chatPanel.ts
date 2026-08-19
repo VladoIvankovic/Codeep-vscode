@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 import { AcpClient } from './acpClient';
 import { showProposedChange, synthesizeEditedContent, trackPendingPermission, clearPendingPermissionForUri } from './diffPreview';
+import {
+  loadPersonalities,
+  normalizeRpcPersonality,
+  personalitiesForLegacyCore,
+  type PersonalityDefinition,
+} from './personalities';
 
 export interface ProviderEntry {
   id: string;
@@ -72,6 +78,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private providerCache: ProviderEntry[] | null = null;
   private providerFetchPromise: Promise<ProviderEntry[]> | null = null;
   private providersUnavailable = false;
+  // Custom-bot RPCs are optional so this extension remains compatible with
+  // older CLI releases. Once a Method not found response is observed, the
+  // process lifetime uses shared ~/.codeep + project files and /personality.
+  private personalityRpcUnavailable = false;
+  private personalityCache: PersonalityDefinition[] | null = null;
+  private activePersonality: string | null;
+  private fallbackActiveResolved = false;
+  private personalityPostPromise: Promise<void> | null = null;
 
   // Status bar feed. We track structured connection state here and fire
   // onStatusChange whenever it shifts; extension.ts listens and renders.
@@ -83,7 +97,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
   private sessionsEmitter = new vscode.EventEmitter<void>();
   public readonly onSessionsChanged = this.sessionsEmitter.event;
 
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(private context: vscode.ExtensionContext) {
+    this.activePersonality = context.globalState.get<string>('codeep.activePersonality') ?? null;
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -148,6 +164,19 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             await this.client?.setMode(msg.modeId);
           } catch (err: any) {
             this.view?.webview.postMessage({ type: 'error', text: err.message });
+          }
+          break;
+        case 'refreshPersonalities':
+          await this.postPersonalityState(true);
+          break;
+        case 'setPersonality':
+          try {
+            const value = typeof msg.personalityId === 'string' && msg.personalityId.trim()
+              ? msg.personalityId.trim()
+              : null;
+            await this.setPersonality(value);
+          } catch (err: any) {
+            this.view?.webview.postMessage({ type: 'personalityError', text: friendlyError(err.message) });
           }
           break;
         case 'newSession':
@@ -308,6 +337,199 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     this.initClient();
     if (!this.client) throw new Error('CLI not running');
     await this.client.setConfigOption('autoLearnProfile', String(enabled));
+  }
+
+  private workspaceRoot(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  private isMethodUnavailable(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return message.includes('Method not found') || message.includes('-32601');
+  }
+
+  private withLocalPersonalityPaths(personalities: PersonalityDefinition[]): PersonalityDefinition[] {
+    const localByName = new Map(
+      loadPersonalities(this.workspaceRoot())
+        .filter((item) => item.filePath)
+        .map((item) => [item.name, item.filePath] as const),
+    );
+    return personalities.map((personality) => ({
+      ...personality,
+      filePath: personality.filePath ?? localByName.get(personality.name),
+    }));
+  }
+
+  /**
+   * Return the canonical bot catalogue. Prefer the CLI's optional structured
+   * RPC; older CLIs fall back to the exact directories their runtime reads.
+   */
+  async getPersonalityState(force = false): Promise<{
+    personalities: PersonalityDefinition[];
+    activePersonality: string | null;
+    source: 'rpc' | 'files';
+  }> {
+    if (force && this.personalityRpcUnavailable) this.fallbackActiveResolved = false;
+    if (!force && this.personalityCache) {
+      return {
+        personalities: this.personalityCache,
+        activePersonality: this.activePersonality,
+        source: this.personalityRpcUnavailable ? 'files' : 'rpc',
+      };
+    }
+
+    if (!this.personalityRpcUnavailable) {
+      try {
+        this.initClient();
+        const result = await this.client!.listPersonalities();
+        const personalities = this.withLocalPersonalityPaths(
+          result.personalities
+            .map(normalizeRpcPersonality)
+            .filter((personality): personality is PersonalityDefinition => personality !== null),
+        );
+        if (personalities.length > 0) {
+          this.personalityCache = personalities;
+          this.activePersonality = result.activePersonality;
+          await this.context.globalState.update('codeep.activePersonality', this.activePersonality);
+          return { personalities, activePersonality: this.activePersonality, source: 'rpc' };
+        }
+      } catch (error) {
+        if (this.isMethodUnavailable(error)) {
+          this.personalityRpcUnavailable = true;
+        } else {
+          this.output.appendLine(`[personalities] structured list failed, using files: ${(error as Error).message}`);
+        }
+      }
+    }
+
+    const localPersonalities = loadPersonalities(this.workspaceRoot());
+    // A CLI without the structured personality RPC predates enforced v1
+    // model/tool/scope controls. Keep true legacy prompts usable, but never
+    // present a structured bot as safely enforceable on that runtime.
+    this.personalityCache = this.personalityRpcUnavailable
+      ? personalitiesForLegacyCore(localPersonalities)
+      : localPersonalities;
+    if (!this.fallbackActiveResolved && this.client) {
+      const previousSkipWelcome = this.skipWelcome;
+      this.skipWelcome = true;
+      try {
+        const response = await this.client.sendAndCollect('/personality', false);
+        const active = response.match(/\*\*Active:\*\*\s+`([^`]+)`/i)?.[1]?.toLowerCase() ?? null;
+        this.activePersonality = active;
+        await this.context.globalState.update('codeep.activePersonality', active);
+      } catch (error) {
+        this.output.appendLine(`[personalities] could not read fallback active bot: ${(error as Error).message}`);
+      } finally {
+        this.skipWelcome = previousSkipWelcome;
+        this.fallbackActiveResolved = true;
+      }
+    }
+    if (this.activePersonality && !this.personalityCache.some((item) => item.name === this.activePersonality)) {
+      this.activePersonality = null;
+      await this.context.globalState.update('codeep.activePersonality', null);
+    }
+    return {
+      personalities: this.personalityCache,
+      activePersonality: this.activePersonality,
+      source: 'files',
+    };
+  }
+
+  private async postPersonalityState(force = false): Promise<void> {
+    if (this.personalityPostPromise) return this.personalityPostPromise;
+    this.personalityPostPromise = (async () => {
+      try {
+        const state = await this.getPersonalityState(force);
+        this.view?.webview.postMessage({ type: 'personalities', ...state });
+      } catch (error) {
+        this.output.appendLine(`[personalities] refresh failed: ${(error as Error).message}`);
+      }
+    })();
+    try {
+      await this.personalityPostPromise;
+    } finally {
+      this.personalityPostPromise = null;
+    }
+  }
+
+  async refreshPersonalities(): Promise<void> {
+    this.personalityCache = null;
+    await this.postPersonalityState(true);
+  }
+
+  /** Native dashboard pull when supported; null asks the caller to use CLI fallback. */
+  async syncPersonalitiesViaRpc(): Promise<number | null> {
+    this.initClient();
+    if (this.personalityRpcUnavailable) return null;
+    try {
+      const result = await this.client!.syncPersonalities();
+      this.personalityCache = this.withLocalPersonalityPaths(
+        result.personalities
+          .map(normalizeRpcPersonality)
+          .filter((personality): personality is PersonalityDefinition => personality !== null),
+      );
+      this.activePersonality = result.activePersonality;
+      await this.context.globalState.update('codeep.activePersonality', this.activePersonality);
+      await this.postPersonalityState(false);
+      return result.updated;
+    } catch (error) {
+      if (this.isMethodUnavailable(error)) {
+        this.personalityRpcUnavailable = true;
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /** Activate through native ACP when available, otherwise the existing command. */
+  async setPersonality(personalityId: string | null): Promise<PersonalityDefinition | null> {
+    const state = await this.getPersonalityState();
+    const requested = personalityId?.toLowerCase() ?? null;
+    const selected = requested
+      ? state.personalities.find((personality) => personality.name === requested) ?? null
+      : null;
+    if (requested && !selected) throw new Error(`No personality named "${requested}".`);
+    if (selected && !selected.available) {
+      if (this.personalityRpcUnavailable && selected.structured) {
+        throw new Error(`${selected.displayName} requires a newer Codeep CLI with enforced custom-bot support.`);
+      }
+      throw new Error(`${selected.displayName} is not available in this workspace or mode.`);
+    }
+
+    this.initClient();
+    let activatedNatively = false;
+    if (!this.personalityRpcUnavailable) {
+      try {
+        await this.client!.setPersonality(requested);
+        activatedNatively = true;
+      } catch (error) {
+        if (this.isMethodUnavailable(error)) {
+          this.personalityRpcUnavailable = true;
+        } else {
+          throw error;
+        }
+      }
+    }
+    if (!activatedNatively) {
+      // Keep command output out of the conversation: this is a settings action,
+      // not a user message. The CLI still owns validation and runtime state.
+      const previousSkipWelcome = this.skipWelcome;
+      this.skipWelcome = true;
+      try {
+        const response = await this.client!.sendAndCollect(
+          requested ? `/personality ${requested}` : '/personality off',
+          false,
+        );
+        if (/No personality named/i.test(response)) throw new Error(response.trim());
+      } finally {
+        this.skipWelcome = previousSkipWelcome;
+      }
+    }
+
+    this.activePersonality = requested;
+    await this.context.globalState.update('codeep.activePersonality', requested);
+    await this.postPersonalityState(false);
+    return selected;
   }
 
   /**
@@ -519,6 +741,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       // refetches against the new server (it might be a different version).
       this.providerCache = null;
       this.providersUnavailable = false;
+      this.personalityRpcUnavailable = false;
+      this.personalityCache = null;
+      this.fallbackActiveResolved = false;
       this.updateStatus({ connection: 'disconnected' });
       this.view?.webview.postMessage({ type: 'status', text: 'Disconnected' });
     });
@@ -563,6 +788,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         this.updateStatus({ model: friendly });
       }
       this.view?.webview.postMessage({ type: 'configOptions', configOptions, modes });
+      void this.postPersonalityState(true);
     });
 
     this.client.on('modeChanged', (modeId: string) => {
@@ -801,6 +1027,20 @@ export class ChatPanel implements vscode.WebviewViewProvider {
       this.skipWelcome = false; // first real message — allow chunks through
       const expanded = await this.expandMentions(text);
       await this.client!.send(expanded);
+      const personalityCommand = text.trim().match(/^\/personality(?:\s+([^\s]+))?\s*$/i);
+      if (personalityCommand?.[1]) {
+        const requested = personalityCommand[1].toLowerCase();
+        const next = ['off', 'none', 'clear'].includes(requested) ? null : requested;
+        const target = next === null
+          ? null
+          : (await this.getPersonalityState()).personalities.find((item) => item.name === next);
+        const available = next === null || target?.available === true;
+        if (available) {
+          this.activePersonality = next;
+          await this.context.globalState.update('codeep.activePersonality', next);
+          await this.postPersonalityState(false);
+        }
+      }
     } catch (err: any) {
       this.output.appendLine(`[ERROR] ${err.message}`);
       this.view?.webview.postMessage({ type: 'error', text: friendlyError(err.message) });
@@ -1007,6 +1247,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     </div>
     <div id="toolbar-buttons">
       <button id="btn-sessions"><span class="codicon codicon-history" aria-hidden="true"></span><span>Sessions</span></button>
+      <button id="btn-personality" title="Choose a custom bot" aria-label="Choose a custom bot"><span class="codicon codicon-sparkle" aria-hidden="true"></span><span id="personality-label">Default</span></button>
       <button id="btn-new"><span class="codicon codicon-add" aria-hidden="true"></span><span>New</span></button>
       <button id="btn-settings"><span class="codicon codicon-settings-gear" aria-hidden="true"></span><span>Settings</span></button>
     </div>

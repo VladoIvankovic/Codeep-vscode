@@ -132,6 +132,181 @@ const COMMANDS: Array<[string, string]> = [
   ['/export',     'Export conversation as md / json / txt'],
 ];
 
+function makeMetaItem(label: string, value: string, title?: string): HTMLElement {
+  const item = document.createElement('div');
+  item.className = 'personality-meta-item';
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const description = document.createElement('dd');
+  description.textContent = value;
+  if (title) description.title = title;
+  item.append(term, description);
+  return item;
+}
+
+function makePersonalityButton(label: string, command: string, icon: string, primary = false): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `personality-action${primary ? ' is-primary' : ''}`;
+  button.dataset.action = 'runVsCodeCommand';
+  button.dataset.command = command;
+  const iconEl = document.createElement('span');
+  iconEl.className = `codicon ${icon}`;
+  iconEl.setAttribute('aria-hidden', 'true');
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  button.append(iconEl, labelEl);
+  return button;
+}
+
+function renderPersonalitySection(): HTMLElement {
+  const section = makeSection('Custom bot');
+  section.classList.add('personality-section');
+
+  const heading = document.createElement('div');
+  heading.className = 'personality-heading';
+  const mark = document.createElement('span');
+  mark.className = 'personality-mark codicon codicon-sparkle';
+  mark.setAttribute('aria-hidden', 'true');
+  const headingCopy = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = 'Specialist for this run';
+  const copy = document.createElement('span');
+  copy.textContent = 'Choose how Codeep works before you send the next task.';
+  headingCopy.append(title, copy);
+  heading.append(mark, headingCopy);
+  section.appendChild(heading);
+
+  if (!state.personalitiesLoaded) {
+    const loading = document.createElement('div');
+    loading.className = 'personality-loading';
+    loading.setAttribute('role', 'status');
+    loading.innerHTML = '<span class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></span><span>Loading custom bots…</span>';
+    section.appendChild(loading);
+  } else {
+    const pickerLabel = document.createElement('label');
+    pickerLabel.className = 'sr-only';
+    pickerLabel.htmlFor = 'personality-select';
+    pickerLabel.textContent = 'Active custom bot';
+    const picker = document.createElement('select');
+    picker.id = 'personality-select';
+    picker.className = 'settings-select personality-select';
+    picker.dataset.action = 'setPersonality';
+
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Default Codeep';
+    defaultOption.selected = state.activePersonality === null;
+    picker.appendChild(defaultOption);
+
+    const groups = new Map([
+      ['project', document.createElement('optgroup')],
+      ['global', document.createElement('optgroup')],
+      ['builtin', document.createElement('optgroup')],
+    ]);
+    groups.get('project')!.label = 'This project';
+    groups.get('global')!.label = 'Your custom bots';
+    groups.get('builtin')!.label = 'Built in';
+    state.personalities.forEach((personality) => {
+      const option = document.createElement('option');
+      option.value = personality.name;
+      option.textContent = personality.available
+        ? personality.displayName
+        : `${personality.displayName} — unavailable here`;
+      option.disabled = !personality.available;
+      option.selected = personality.name === state.activePersonality;
+      groups.get(personality.source)?.appendChild(option);
+    });
+    groups.forEach((group) => {
+      if (group.childElementCount > 0) picker.appendChild(group);
+    });
+    section.append(pickerLabel, picker);
+
+    const active = state.personalities.find((item) => item.name === state.activePersonality);
+    const card = document.createElement('article');
+    card.className = 'personality-card';
+    card.setAttribute('aria-live', 'polite');
+    const cardHeader = document.createElement('div');
+    cardHeader.className = 'personality-card-header';
+    const identity = document.createElement('div');
+    const activeName = document.createElement('strong');
+    activeName.textContent = active?.displayName || 'Default Codeep';
+    const slug = document.createElement('code');
+    slug.textContent = active ? active.name : 'default';
+    identity.append(activeName, slug);
+    const badge = document.createElement('span');
+    badge.className = 'personality-source';
+    badge.textContent = active
+      ? active.source === 'builtin' ? 'Built-in' : active.source === 'project' ? 'Project' : 'Synced'
+      : 'Default';
+    cardHeader.append(identity, badge);
+
+    const description = document.createElement('p');
+    description.textContent = active?.description || 'The standard Codeep agent with your current model and unrestricted tools.';
+
+    const metadata = document.createElement('dl');
+    metadata.className = 'personality-meta';
+    const model = active?.model || 'Automatic';
+    const tools = active
+      ? active.restrictTools
+        ? active.tools.length > 0 ? active.tools.join(', ') : 'None'
+        : 'Unrestricted'
+      : 'Unrestricted';
+    const scope = active?.scope || 'All projects';
+    const scopeTitle = active?.scope === 'Selected projects' && active.projects.length > 0
+      ? active.projects.join(', ')
+      : undefined;
+    metadata.append(
+      makeMetaItem('Model', model, model),
+      makeMetaItem('Tools', tools, tools),
+      makeMetaItem('Scope', scope, scopeTitle),
+    );
+    if (active?.scope === 'Selected projects') {
+      const projectList = active.projects.length > 0 ? active.projects.join(', ') : 'No projects selected';
+      metadata.append(makeMetaItem('Projects', projectList, projectList));
+    }
+    card.append(cardHeader, description, metadata);
+
+    if (active && !active.structured) {
+      const legacy = document.createElement('div');
+      legacy.className = 'personality-legacy';
+      const legacyIcon = document.createElement('span');
+      legacyIcon.className = 'codicon codicon-info';
+      legacyIcon.setAttribute('aria-hidden', 'true');
+      const legacyCopy = document.createElement('span');
+      legacyCopy.textContent = active.source === 'builtin'
+        ? 'Built-in personality: model, tools, and scope remain unrestricted.'
+        : 'Legacy prompt: model, tools, and scope remain unrestricted.';
+      legacy.append(legacyIcon, legacyCopy);
+      card.appendChild(legacy);
+    }
+    section.appendChild(card);
+  }
+
+  if (state.personalityError) {
+    const error = document.createElement('div');
+    error.className = 'personality-error';
+    error.setAttribute('role', 'alert');
+    error.textContent = state.personalityError;
+    section.appendChild(error);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'personality-actions';
+  actions.append(
+    makePersonalityButton('Manage', 'codeep.managePersonalities', 'codicon-settings-gear', true),
+    makePersonalityButton('Sync', 'codeep.syncPersonalities', 'codicon-sync'),
+  );
+  section.appendChild(actions);
+  const footer = document.createElement('p');
+  footer.className = 'personality-footer';
+  footer.textContent = state.personalitySource === 'rpc'
+    ? 'Connected to Codeep CLI · runtime rules are enforced by the core agent.'
+    : 'Compatible mode · reads shared project and ~/.codeep personality files.';
+  section.appendChild(footer);
+  return section;
+}
+
 export function renderSettingsPanel(): void {
   // Don't yank the panel out from under the user mid-edit
   if (document.activeElement && settingsPanelEl.contains(document.activeElement)) return;
@@ -157,6 +332,9 @@ export function renderSettingsPanel(): void {
     modelSection.appendChild(makeRow('Model', modelSelect));
   }
   settingsPanelEl.appendChild(modelSection);
+
+  // ── Custom bot ──
+  settingsPanelEl.appendChild(renderPersonalitySection());
 
   // ── Preferences ──
   const otherOpts = state.configOptions.filter((o) => o.id !== 'model');

@@ -76,7 +76,14 @@ body {
   flex-shrink: 0;
 }
 
-#btn-settings, #btn-sessions, #btn-new {
+#toolbar-buttons button > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#btn-settings, #btn-sessions, #btn-new, #btn-personality {
   background: none;
   border: 1px solid var(--vscode-button-secondaryBorder, rgba(255,255,255,0.15));
   color: var(--vscode-foreground);
@@ -261,6 +268,217 @@ body {
 .settings-cmd-chip:hover {
   background: var(--vscode-list-hoverBackground);
   border-color: var(--vscode-focusBorder, rgba(255,255,255,0.3));
+}
+
+.personality-section {
+  position: relative;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(255, 59, 69, 0.12), transparent 42%),
+    var(--vscode-sideBar-background);
+}
+
+.personality-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.personality-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 1px solid rgba(255, 59, 69, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 59, 69, 0.1);
+  color: var(--codeep-accent, #ff3b45);
+}
+
+.personality-heading > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.personality-heading strong {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--vscode-foreground);
+}
+
+.personality-heading span:not(.personality-mark) {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.personality-select {
+  width: 100%;
+  min-height: 28px;
+  margin-bottom: 7px;
+  border-radius: 6px;
+  padding: 4px 7px;
+}
+
+.personality-card {
+  padding: 8px;
+  border: 1px solid var(--codeep-border-strong);
+  border-left-color: var(--codeep-accent, #ff3b45);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, var(--vscode-foreground) 12%);
+}
+
+.personality-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.personality-card-header > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.personality-card-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.personality-card-header code {
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+}
+
+.personality-source {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 59, 69, 0.3);
+  border-radius: 999px;
+  color: var(--codeep-accent, #ff3b45);
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.personality-card > p {
+  margin: 5px 0 7px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.personality-meta {
+  display: grid;
+  gap: 3px;
+}
+
+.personality-meta-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.personality-meta dt {
+  color: var(--vscode-descriptionForeground);
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.personality-meta dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+}
+
+.personality-legacy,
+.personality-error,
+.personality-loading {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin-top: 7px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.personality-error {
+  padding: 6px 7px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(255, 59, 69, 0.5));
+  border-radius: 5px;
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 59, 69, 0.1));
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+}
+
+.personality-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr);
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.personality-action {
+  min-width: 0;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--codeep-border-strong);
+  border-radius: 5px;
+  background: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.personality-action:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.personality-action.is-primary {
+  border-color: var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.personality-action.is-primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.personality-action:focus-visible,
+.personality-select:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.personality-footer {
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 8px;
+  line-height: 1.35;
 }
 
 #sessions-panel {
@@ -1023,14 +1241,15 @@ body {
 
 #toolbar-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   margin-top: 10px;
 }
 
 #btn-settings,
 #btn-sessions,
-#btn-new {
+#btn-new,
+#btn-personality {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1048,7 +1267,8 @@ body {
 
 #btn-settings:hover,
 #btn-sessions:hover,
-#btn-new:hover {
+#btn-new:hover,
+#btn-personality:hover {
   background: var(--codeep-surface-raised);
   border-color: var(--codeep-border);
   color: var(--vscode-foreground);
@@ -1057,6 +1277,7 @@ body {
 #btn-settings:focus-visible,
 #btn-sessions:focus-visible,
 #btn-new:focus-visible,
+#btn-personality:focus-visible,
 #conversation-toggle:focus-visible,
 .tool-group-label:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);

@@ -4,6 +4,41 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.9.0] — 2026-08-17
+
+> Custom bots land in the editor: pick one from the Agent Timeline toolbar, sync the set you built on the dashboard, and see exactly which capabilities each bot is allowed to use.
+
+### Changed
+
+- **The bot picker flags when Git can read file contents.** A bot with Git but
+  not Files still returns committed content via `git show HEAD:file`, so the
+  picker line says so rather than letting the capability list imply otherwise.
+
+### Added
+
+- **First-class Custom Bot picker.** The Agent Timeline toolbar and Settings
+  now expose the active Codeep personality without requiring users to remember
+  `/personality`. The detail card shows the bot's model, allowed tool groups,
+  workspace scope, source, and selected-project list.
+- **Dashboard sync and management commands.** `Codeep: Sync Custom Bots from
+  Dashboard` uses the structured ACP sync endpoint when available and falls
+  back to `codeep account sync` for older CLIs. `Choose Custom Bot`, `Manage
+  Custom Bots`, and `Open Personality Builder` are available from the command
+  palette and directly from the webview.
+- **`custom-bot/v1` compatibility.** Frontmatter metadata is parsed before the
+  human-readable Markdown sections. Section-only and legacy personality files
+  remain supported; legacy files are explicitly shown as unrestricted rather
+  than being assigned invented model/tool/scope constraints. Missing or
+  malformed v1 tool metadata is conversation-only, while an invalid structured
+  scope is unavailable instead of widening to all projects.
+
+### Compatibility
+
+- Prefers `session/list_personalities`, `session/set_personality`, and
+  `session/sync_personalities` from the CLI. If those RPCs are unavailable,
+  the extension reads the same project/global files as the CLI and activates
+  through the existing `/personality` command.
+
 ## [2.8.0] — 2026-08-14
 
 > The sidebar is rebuilt as an **Agent Timeline**: the active task and its live plan on top, the conversation collapsible underneath, grouped tool activity, and a run summary (actions / checks / next step). Icons now come from VS Code's own codicon set instead of unicode glyphs, and the view is renamed "Chat" → "Agent Timeline" to match what it actually shows.

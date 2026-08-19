@@ -296,7 +296,7 @@ export class AcpClient extends EventEmitter {
    * This makes inline edits visible in chat history, which we treat as a
    * feature rather than something to suppress.
    */
-  async sendAndCollect(message: string): Promise<string> {
+  async sendAndCollect(message: string, emitResponseEnd = true): Promise<string> {
     if (!this.process || !this.sessionId) {
       await this.start();
     }
@@ -314,7 +314,7 @@ export class AcpClient extends EventEmitter {
     }
     if (this.suppressNextResponseEnd) {
       this.suppressNextResponseEnd = false;
-    } else {
+    } else if (emitResponseEnd) {
       this.emit('responseEnd');
     }
     return buffer;
@@ -419,6 +419,43 @@ export class AcpClient extends EventEmitter {
     if (!this.process) await this.start();
     const result = await this.request('session/list_providers', {});
     return result?.providers ?? [];
+  }
+
+  /**
+   * Optional custom-bot discovery RPC. CLI releases before the custom-bot
+   * contract return Method not found; ChatPanel intentionally falls back to
+   * reading the shared personality directories in that case.
+   */
+  async listPersonalities(): Promise<{ personalities: any[]; activePersonality: string | null }> {
+    if (!this.process) await this.start();
+    if (!this.sessionId) throw new Error('CLI session is not ready');
+    const result = await this.request('session/list_personalities', { sessionId: this.sessionId });
+    return {
+      personalities: Array.isArray(result?.personalities) ? result.personalities : [],
+      activePersonality: typeof result?.activePersonality === 'string' ? result.activePersonality : null,
+    };
+  }
+
+  /** Optional native activation RPC paired with listPersonalities(). */
+  async setPersonality(personalityId: string | null): Promise<string | null> {
+    if (!this.process) await this.start();
+    if (!this.sessionId) throw new Error('CLI session is not ready');
+    const result = await this.request('session/set_personality', {
+      sessionId: this.sessionId,
+      personalityId,
+    });
+    return typeof result?.activePersonality === 'string' ? result.activePersonality : null;
+  }
+
+  async syncPersonalities(): Promise<{ personalities: any[]; activePersonality: string | null; updated: number }> {
+    if (!this.process) await this.start();
+    if (!this.sessionId) throw new Error('CLI session is not ready');
+    const result = await this.request('session/sync_personalities', { sessionId: this.sessionId });
+    return {
+      personalities: Array.isArray(result?.personalities) ? result.personalities : [],
+      activePersonality: typeof result?.activePersonality === 'string' ? result.activePersonality : null,
+      updated: Number.isFinite(result?.updated) ? Number(result.updated) : 0,
+    };
   }
 
   cancel(): void {

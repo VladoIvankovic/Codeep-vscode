@@ -33,6 +33,7 @@ npm install -g codeep
 - **Review file** — right-click any file to run an AI code review
 - **Session browser** — list, load, and delete past conversations
 - **Settings panel** — switch AI model, provider, and permission mode without leaving the editor
+- **Custom bots / personalities** — choose the active specialist from the toolbar or Settings, inspect its model, tool groups, and project scope, sync dashboard bots, and open the guided Personality Builder
 - **Inline permission prompts with diff preview** — see exactly what the agent wants to write, edit, or run before approving (no surprises)
 - **Native diff editor for proposed edits** — when the agent asks permission to write or edit a file, a real `vscode.diff` tab opens alongside the inline card. Full syntax highlighting, gutter markers, your editor settings. Closes automatically once you click Allow or Deny.
 - **Accept / Reject from inside the diff** — CodeLens links at the top of the proposed-change side let you resolve the permission without leaving the editor. The inline chat card auto-resolves to stay in sync.
@@ -59,6 +60,9 @@ The extension connects to the Codeep CLI automatically on startup. Once connecte
 | Codeep: Edit Profile | — | Open/create `~/.codeep/profile.md` — your global "about me" profile |
 | Codeep: Edit Project Profile | — | Open/create `.codeep/profile.md` for this workspace |
 | Codeep: Toggle Profile Auto-Learn | — | Let Codeep learn your durable preferences from sessions (opt-in) |
+| Codeep: Choose Custom Bot | — | Pick the default agent, a built-in personality, or a synced/project custom bot |
+| Codeep: Sync Custom Bots from Dashboard | — | Pull the latest Personality Builder definitions into the shared Codeep config |
+| Codeep: Manage Custom Bots | — | Open the dashboard builder, personality folders, or a local bot file |
 
 ### Your profile
 
@@ -72,7 +76,13 @@ Click **Sessions** in the toolbar to browse past conversations. Click a session 
 
 ### Settings
 
-Click **Settings** in the toolbar to change the AI model, provider, and permission mode. Changes take effect immediately.
+Click **Settings** in the toolbar to change the AI model, provider, permission mode,
+and active custom bot. The custom-bot card shows the effective model guidance,
+Files / Terminal / Tests / Git / Web / MCP tool groups, and workspace scope. Legacy
+personality Markdown remains supported and is shown accurately as unrestricted.
+Versioned bots with missing or malformed tool metadata are shown as
+conversation-only, and invalid structured scope metadata is unavailable.
+Changes take effect immediately through the Codeep CLI core.
 
 ### Permission prompts
 

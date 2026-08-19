@@ -7,6 +7,7 @@ import {
   btnAttach,
   btnMode,
   btnNew,
+  btnPersonality,
   btnSend,
   btnSessions,
   btnSettings,
@@ -18,6 +19,7 @@ import {
   mentionPopup,
   modeLabelEl,
   modelBadgeEl,
+  personalityLabelEl,
   scrollSentinel,
   scrollToBottom,
   sessionsPanelEl,
@@ -163,10 +165,14 @@ function toggleSettingsPanel(): void {
   sessionsPanelEl.style.display = 'none';
   renderSettingsPanel();
   settingsPanelEl.style.display = 'block';
+  vscode.postMessage({ type: 'refreshPersonalities' });
 }
 
 btnSettings.addEventListener('click', toggleSettingsPanel);
 btnMode.addEventListener('click', toggleSettingsPanel);
+btnPersonality.addEventListener('click', () => {
+  vscode.postMessage({ type: 'runVsCodeCommand', command: 'codeep.selectPersonality' });
+});
 btnAttach.addEventListener('click', () => {
   vscode.postMessage({ type: 'runVsCodeCommand', command: 'codeep.attachActiveFile' });
 });
@@ -326,6 +332,26 @@ window.addEventListener('message', (event: MessageEvent) => {
       if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
       break;
 
+    case 'personalities': {
+      state.personalities = msg.personalities || [];
+      state.activePersonality = typeof msg.activePersonality === 'string' ? msg.activePersonality : null;
+      state.personalitiesLoaded = true;
+      state.personalitySource = msg.source === 'rpc' ? 'rpc' : 'files';
+      state.personalityError = '';
+      const active = state.personalities.find((item) => item.name === state.activePersonality);
+      personalityLabelEl.textContent = active?.displayName || 'Default';
+      btnPersonality.title = active
+        ? `Custom bot: ${active.displayName}. Click to switch.`
+        : 'Using default Codeep. Click to choose a custom bot.';
+      if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
+      break;
+    }
+
+    case 'personalityError':
+      state.personalityError = msg.text || 'Could not switch custom bot.';
+      if (settingsPanelEl.style.display !== 'none') renderSettingsPanel();
+      break;
+
     case 'modeChanged':
       state.currentMode = msg.modeId;
       modeLabelEl.textContent = msg.modeId
@@ -420,6 +446,11 @@ settingsPanelEl.addEventListener('change', (e) => {
     vscode.postMessage({ type: 'setMode', modeId: select.value });
   } else if (select.dataset.action === 'setConfig') {
     vscode.postMessage({ type: 'setConfig', configId: select.dataset.configId, value: select.value });
+  } else if (select.dataset.action === 'setPersonality') {
+    select.blur();
+    select.disabled = true;
+    select.setAttribute('aria-busy', 'true');
+    vscode.postMessage({ type: 'setPersonality', personalityId: select.value || null });
   }
 });
 
