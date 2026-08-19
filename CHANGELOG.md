@@ -4,15 +4,17 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [2.9.0] — 2026-08-17
+## [2.9.0] — 2026-08-19
 
 > Custom bots land in the editor: pick one from the Agent Timeline toolbar, sync the set you built on the dashboard, and see exactly which capabilities each bot is allowed to use.
 
 ### Changed
 
-- **The bot picker flags when Git can read file contents.** A bot with Git but
-  not Files still returns committed content via `git show HEAD:file`, so the
-  picker line says so rather than letting the capability list imply otherwise.
+- **The bot picker flags what Git actually grants.** A bot with Git but not
+  Files still returns committed content via `git show HEAD:file`, and the same
+  allowlist permits `git rm`, `git commit` and `git push` — so the picker line
+  reads "Git reads and writes files" rather than letting the capability list
+  imply the bot can only look.
 
 ### Added
 
