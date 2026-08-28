@@ -4,6 +4,27 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Codeep: Show Audit Record.** Every agent run started from the editor already
+  wrote one — the extension runs the CLI, and the CLI has recorded reads,
+  writes and refusals since 2.22.0. What was missing was any way to read it
+  without leaving VS Code.
+
+  The command opens the project's record as a Markdown preview, newest run
+  first. Ordinary work is summarised by kind, because a run that read forty
+  files should be one line — and every refusal is listed individually, because
+  a tool call the capability boundary turned down is the entry the record
+  exists for and must never be buried among the forty.
+
+  The files are read directly rather than through the CLI. A subprocess for
+  what is a directory of JSON lines would be slower, fail differently when the
+  CLI is missing, and put a second copy of the format in an argument list. The
+  format is shared on purpose: a record written by the Mac app reads here
+  unchanged, and vice versa.
+
 ## [2.9.0] — 2026-08-19
 
 > Custom bots land in the editor: pick one from the Agent Timeline toolbar, sync the set you built on the dashboard, and see exactly which capabilities each bot is allowed to use.

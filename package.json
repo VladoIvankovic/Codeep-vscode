@@ -1,7 +1,7 @@
 {
   "name": "codeep",
   "displayName": "Codeep",
-  "description": "AI coding assistant for VS Code \u2014 powered by Codeep CLI",
+  "description": "AI coding assistant for VS Code — powered by Codeep CLI",
   "version": "2.9.0",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
@@ -98,11 +98,16 @@
       },
       {
         "command": "codeep.mcpAddServer",
-        "title": "Codeep: Add MCP Server\u2026"
+        "title": "Codeep: Add MCP Server…"
       },
       {
         "command": "codeep.mcpRemoveServer",
-        "title": "Codeep: Remove MCP Server\u2026"
+        "title": "Codeep: Remove MCP Server…"
+      },
+      {
+        "command": "codeep.showAuditRecord",
+        "title": "Codeep: Show Audit Record",
+        "category": "Codeep"
       },
       {
         "command": "codeep.mcpOpenConfig",
@@ -110,11 +115,11 @@
       },
       {
         "command": "codeep.skillsBundles",
-        "title": "Codeep: Browse Skill Bundles\u2026"
+        "title": "Codeep: Browse Skill Bundles…"
       },
       {
         "command": "codeep.skillsCreateBundle",
-        "title": "Codeep: Create Skill Bundle\u2026"
+        "title": "Codeep: Create Skill Bundle…"
       },
       {
         "command": "codeep.skillsOpenFolder",
@@ -268,7 +273,7 @@
           "default": 5,
           "minimum": 1,
           "maximum": 60,
-          "description": "Idle timeout in minutes for an in-flight prompt. The timer resets on every signal from the CLI (chunks, tool calls, thoughts) \u2014 so this only fires when the agent is genuinely wedged. Bump to 15+ for slow reasoning models."
+          "description": "Idle timeout in minutes for an in-flight prompt. The timer resets on every signal from the CLI (chunks, tool calls, thoughts) — so this only fires when the agent is genuinely wedged. Bump to 15+ for slow reasoning models."
         },
         "codeep.autoLearnProfile": {
           "type": "boolean",
@@ -299,7 +304,7 @@
       {
         "name": "codeep_skills",
         "displayName": "Codeep Skills",
-        "modelDescription": "Returns the Codeep skill bundles defined in this workspace (.codeep/skills/<name>/SKILL.md) \u2014 project-specific workflows like deploy steps, review checklists, or hotfix flows. Use this when the user's request might match a defined workflow, to follow the project's own conventions instead of guessing.",
+        "modelDescription": "Returns the Codeep skill bundles defined in this workspace (.codeep/skills/<name>/SKILL.md) — project-specific workflows like deploy steps, review checklists, or hotfix flows. Use this when the user's request might match a defined workflow, to follow the project's own conventions instead of guessing.",
         "userDescription": "Codeep skill bundles defined in this workspace",
         "toolReferenceName": "codeepSkills",
         "canBeReferencedInPrompt": true,
@@ -329,7 +334,7 @@
       {
         "id": "codeep.gettingStarted",
         "title": "Get Started with Codeep",
-        "description": "Connect the CLI, open the chat, and start coding with AI \u2014 including self-hosted models.",
+        "description": "Connect the CLI, open the chat, and start coding with AI — including self-hosted models.",
         "steps": [
           {
             "id": "codeep.walkthrough.cli",
@@ -365,7 +370,7 @@
           {
             "id": "codeep.walkthrough.model",
             "title": "Choose your model",
-            "description": "Switch providers/models \u2014 or point Codeep at your own endpoint.\n[Select Provider & Model](command:codeep.selectModel)",
+            "description": "Switch providers/models — or point Codeep at your own endpoint.\n[Select Provider & Model](command:codeep.selectModel)",
             "media": {
               "markdown": "media/walkthrough/model.md"
             },
@@ -376,7 +381,7 @@
           {
             "id": "codeep.walkthrough.profile",
             "title": "Personalize Codeep",
-            "description": "Tell Codeep how you like to work \u2014 reply language, style, stack. It adapts on every project.\n[Edit Profile](command:codeep.editProfile)",
+            "description": "Tell Codeep how you like to work — reply language, style, stack. It adapts on every project.\n[Edit Profile](command:codeep.editProfile)",
             "media": {
               "markdown": "media/walkthrough/profile.md"
             },

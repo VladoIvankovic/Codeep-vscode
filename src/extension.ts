@@ -10,6 +10,7 @@ import { registerChatParticipant } from './chatParticipant';
 import { registerCodeepTools } from './codeepTools';
 import { registerProfileCommands } from './profile';
 import { registerPersonalityCommands } from './personalityCommands';
+import { readAuditEvents, groupAuditRuns, formatAuditRuns } from './auditLog';
 import { renderStatusBar } from './statusBarRenderer';
 import {
   validateMcpServerName,
@@ -606,6 +607,25 @@ Anything else the agent should know — edge cases, gotchas, things to double-ch
       }
       const skillsDir = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.codeep', 'skills');
       await vscode.commands.executeCommand('revealFileInOS', skillsDir);
+    }),
+
+    vscode.commands.registerCommand('codeep.showAuditRecord', async () => {
+      const root = workspaceRoot();
+      if (!root) {
+        vscode.window.showInformationMessage('Open a folder — the audit record lives with the project.');
+        return;
+      }
+      const runs = groupAuditRuns(readAuditEvents(root));
+      const name = vscode.workspace.workspaceFolders?.[0]?.name ?? 'this project';
+      // A virtual document rather than a file: the record belongs to the
+      // project, and writing a rendered copy into it would leave a second,
+      // staler version of the same history in the working tree.
+      const doc = await vscode.workspace.openTextDocument({
+        content: formatAuditRuns(runs, name),
+        language: 'markdown',
+      });
+      await vscode.window.showTextDocument(doc, { preview: true });
+      await vscode.commands.executeCommand('markdown.showPreview');
     }),
 
     vscode.commands.registerCommand('codeep.mcpOpenConfig', async () => {
