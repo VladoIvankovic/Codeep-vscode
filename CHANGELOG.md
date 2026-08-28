@@ -4,7 +4,12 @@ All notable changes to the Codeep VS Code extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [3.0.0] — 2026-08-28
+
+Codeep V3 is one release across three surfaces, so the three carry one number:
+the CLI moves 2.25.0 → 3.0.0, this extension 2.9.0 → 3.0.0, and the Mac app
+1.14.0 → 3.0.0. **Nothing here is a breaking change** — the major is the
+alignment, said out loud rather than left to look like an accident.
 
 ### Added
 
