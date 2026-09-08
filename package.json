@@ -3,6 +3,7 @@
   "displayName": "Codeep",
   "description": "AI coding assistant for VS Code — powered by Codeep CLI",
   "version": "3.0.0",
+  "license": "MIT",
   "publisher": "VladoIvankovic",
   "icon": "Codeep.png",
   "galleryBanner": {
